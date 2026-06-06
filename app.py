@@ -103,17 +103,7 @@ def _init_cache() -> None:
         _CACHE["state_metrics"] = _build_state_metrics()
 
     # Large sentiment file — sample 60K rows to keep memory manageable
-    print("  Sampling sentiment_results.csv (this may take a moment) ...")
-    full_sent = _load(
-        "sentiment_results.csv",
-        usecols=["City", "Place", "Rating", "polarity", "subjectivity", "sentiment"],
-    )
-    if full_sent is not None:
-        _CACHE["sent_sample"] = full_sent.sample(
-            min(60_000, len(full_sent)), random_state=42
-        )
-    else:
-        _CACHE["sent_sample"] = None
+    _CACHE["sent_sample"] = None
 
     print("  [OK] Data loaded.")
 
