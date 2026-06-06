@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta name="description" content="Tourism Trend Analytics & Hotspot Prediction Dashboard"/>
+  <title>{% block title %}Tourism Analytics{% endblock %}</title>
+
+  <!-- Bootstrap 5 -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css"/>
+  <!-- Custom styles -->
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}"/>
+
+  <style>
+    /* Inline overrides that must load before body renders */
+    body { background: var(--bg-app); }
+  </style>
+</head>
+<body>
+
+<div class="app-wrapper">
+
+  <!-- ═══════════════════════════════ SIDEBAR ═══════════════════════════════ -->
+  <aside class="sidebar" id="sidebar">
+
+    <!-- Brand -->
+    <div class="sidebar-brand">
+      <span class="brand-icon">🌍</span>
+      <div class="brand-title">Tourism Trend Analytics</div>
+    </div>
+
+    <!-- Navigation -->
+    <nav class="sidebar-nav">
+      <div class="nav-section-label">Main Menu</div>
+
+      <a href="/dashboard"  class="nav-link {% if active=='dashboard'  %}active{% endif %}">
+        <span class="nav-icon">📊</span> Dashboard
+      </a>
+      <a href="/sentiment"  class="nav-link {% if active=='sentiment'  %}active{% endif %}">
+        <span class="nav-icon">💬</span> Sentiment Analysis
+      </a>
+      <a href="/hotspots"   class="nav-link {% if active=='hotspots'   %}active{% endif %}">
+        <span class="nav-icon">🔥</span> Hotspot Rankings
+      </a>
+      <a href="/realtime"   class="nav-link {% if active=='realtime'   %}active{% endif %}">
+        <span class="nav-icon">📡</span> Real-Time Trends
+      </a>
+      <a href="/prediction" class="nav-link {% if active=='prediction' %}active{% endif %}">
+        <span class="nav-icon">🤖</span> Prediction
+      </a>
+      <a href="/india-map"  class="nav-link {% if active=='india_map'  %}active{% endif %}">
+        <span class="nav-icon">🗺️</span> India Tourism Map
+      </a>
+
+      <div class="nav-section-label" style="margin-top:10px;">Analytics Tools</div>
+
+      <a href="/simulator" class="nav-link {% if active=='simulator' %}active{% endif %}">
+        <span class="nav-icon">⚖️</span> Simulator
+      </a>
+      <a href="/review-explorer" class="nav-link {% if active=='review_explorer' %}active{% endif %}">
+        <span class="nav-icon">💬</span> Review Explorer
+      </a>
+
+    </nav>
+
+    <!-- Stats summary -->
+    <div class="sidebar-stats">
+      <div class="stat-pill"><span>Total Reviews</span><span>1,482,466</span></div>
+      <div class="stat-pill"><span>Cities</span><span>1,794</span></div>
+      <div class="stat-pill"><span>Places</span><span>14,494</span></div>
+      <div class="stat-pill"><span>Rating Scale</span><span>1–5 ★</span></div>
+      <div style="margin-top:10px;font-size:0.62rem;color:rgba(255,255,255,0.2);text-align:center;">
+        Flask · Pandas · PySpark · Plotly
+      </div>
+    </div>
+  </aside>
+
+  <!-- ════════════════════════════ MAIN CONTENT ════════════════════════════ -->
+  <div class="main-content" id="mainContent">
+
+    <!-- Top bar -->
+    <header class="topbar">
+      <div class="topbar-left">
+        <button class="btn-sidebar-toggle" id="sidebarToggle" title="Toggle sidebar">☰</button>
+        <div>
+          <div class="topbar-title">{% block page_title %}Dashboard{% endblock %}</div>
+          <div class="topbar-breadcrumb">Tourism Trend Analytics &nbsp;›&nbsp; {% block breadcrumb %}Overview{% endblock %}</div>
+        </div>
+      </div>
+      <div class="topbar-right">  
+        <button class="theme-toggle-btn" id="themeToggle" title="Toggle dark/light mode">
+          <span id="themeIcon">☀️</span>
+          <span id="themeLabel">Light</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Page body -->
+    <main class="page-content fade-in">
+      {% block content %}{% endblock %}
+    </main>
+
+  </div><!-- /main-content -->
+</div><!-- /app-wrapper -->
+
+<!-- ═══════════════════════════════ SCRIPTS ═══════════════════════════════ -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+<script src="{{ url_for('static', filename='js/main.js') }}"></script>
+
+{% block scripts %}{% endblock %}
+</body>
+</html>

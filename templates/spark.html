@@ -1,0 +1,215 @@
+{% extends "base.html" %}
+{% block title %}Spark Analysis{% endblock %}
+{% block page_title %}Apache Spark Analysis{% endblock %}
+{% block breadcrumb %}Big Data — Spark Techniques{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>⚡ Apache Spark Analysis</h1>
+  <p>Big Data processing of 1.48M tourism reviews using Apache Spark — demonstrating scalable distributed analytics.</p>
+</div>
+
+<div class="info-box">
+  <strong>Why Spark?</strong> Apache Spark is the industry-standard framework for distributed Big Data processing.
+  This dataset (1.48M rows) was analysed using PySpark to demonstrate scalability, SQL capabilities,
+  and distributed aggregation techniques suitable for datasets 10x–100x larger.
+</div>
+
+<!-- Spark Techniques Badges -->
+<div class="chart-card" id="techniquesBadges">
+  <div class="chart-card-header">
+    <div class="chart-card-title"><span class="icon">🛠️</span> Spark Techniques Demonstrated</div>
+  </div>
+  <div id="techniquesList" style="display:flex;flex-wrap:wrap;gap:10px;padding:8px 0;">
+    <div class="loading-overlay"><div class="spinner"></div></div>
+  </div>
+</div>
+
+<!-- Spark Dataset Summary KPIs -->
+<div class="kpi-grid" id="sparkKpis" style="display:none;">
+  <div class="kpi-card">
+    <div class="kpi-icon">📝</div>
+    <div class="kpi-body">
+      <div class="kpi-value" id="sp-total-reviews">—</div>
+      <div class="kpi-label">Total Reviews (Spark)</div>
+    </div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-icon">🏙️</div>
+    <div class="kpi-body">
+      <div class="kpi-value" id="sp-unique-cities">—</div>
+      <div class="kpi-label">Unique Cities</div>
+    </div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-icon">📍</div>
+    <div class="kpi-body">
+      <div class="kpi-value" id="sp-unique-places">—</div>
+      <div class="kpi-label">Unique Places</div>
+    </div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-icon">⭐</div>
+    <div class="kpi-body">
+      <div class="kpi-value" id="sp-avg-rating">—</div>
+      <div class="kpi-label">Avg Rating (Spark SQL)</div>
+    </div>
+  </div>
+</div>
+
+<!-- Row: Top Cities + Top Places -->
+<div class="row-2" id="sparkChartRow1" style="display:none;">
+  <div class="chart-card">
+    <div class="chart-card-header">
+      <div class="chart-card-title"><span class="icon">🏙️</span> Top 20 Cities (Spark groupBy)</div>
+    </div>
+    <div id="chartSparkCities" class="chart-container"></div>
+  </div>
+  <div class="chart-card">
+    <div class="chart-card-header">
+      <div class="chart-card-title"><span class="icon">📍</span> Top 20 Places (Spark groupBy)</div>
+    </div>
+    <div id="chartSparkPlaces" class="chart-container"></div>
+  </div>
+</div>
+
+<!-- Rating Distribution -->
+<div class="chart-card" id="sparkRatingCard" style="display:none;">
+  <div class="chart-card-header">
+    <div class="chart-card-title"><span class="icon">📊</span> Rating Distribution (Spark SQL)</div>
+  </div>
+  <div id="chartSparkRating" class="chart-container"></div>
+</div>
+
+<!-- State Metrics (Window Functions) -->
+<div class="chart-card" id="sparkStateCard" style="display:none;">
+  <div class="chart-card-header">
+    <div class="chart-card-title"><span class="icon">🗺️</span> State-Level Metrics (Spark UDF + groupBy)</div>
+  </div>
+  <div id="chartSparkState" class="chart-container"></div>
+</div>
+
+<!-- Spark Techniques Explanation Table -->
+<div class="chart-card">
+  <div class="chart-card-header">
+    <div class="chart-card-title"><span class="icon">📚</span> Spark API Reference — Report Evidence</div>
+  </div>
+  <div class="data-table-wrap">
+    <table class="data-table">
+      <thead><tr><th>Spark Feature</th><th>Used In</th><th>Purpose</th><th>Code Reference</th></tr></thead>
+      <tbody>
+        <tr><td><strong>SparkSession</strong></td><td>All steps</td><td>Unified entry point; replaces SparkContext + SQLContext</td><td>SparkSession.builder.appName(...).getOrCreate()</td></tr>
+        <tr><td><strong>Explicit Schema</strong></td><td>Data loading</td><td>Avoids 2-pass schema inference scan; production best practice</td><td>StructType([StructField(...)])</td></tr>
+        <tr><td><strong>DataFrame API</strong></td><td>All steps</td><td>Distributed, lazy, SQL-optimised data manipulation</td><td>.filter(), .withColumn(), .select()</td></tr>
+        <tr><td><strong>cache() / persist()</strong></td><td>After load</td><td>Materialise DataFrame in memory; avoid re-reading CSV for each aggregation</td><td>df.cache(); df.count()</td></tr>
+        <tr><td><strong>groupBy() + agg()</strong></td><td>City, Place metrics</td><td>Distributed MapReduce-style aggregation across partitions</td><td>.groupBy("City").agg(count, avg, stddev)</td></tr>
+        <tr><td><strong>join()</strong></td><td>Place enrichment</td><td>Distributed join of place metrics with city-level context</td><td>.join(city_summary, on="City", how="left")</td></tr>
+        <tr><td><strong>Spark SQL</strong></td><td>Summary, rating dist</td><td>SQL interface over DataFrames; bridges analyst SQL knowledge</td><td>createOrReplaceTempView + spark.sql(...)</td></tr>
+        <tr><td><strong>Window Functions</strong></td><td>Rankings</td><td>rank(), dense_rank(), row_number(), percent_rank() across partitions</td><td>Window.orderBy(...); Window.partitionBy(...)</td></tr>
+        <tr><td><strong>UDF</strong></td><td>State mapping</td><td>Custom Python logic (city→state) within Spark execution engine</td><td>udf(lambda city: MAPPING.get(city), StringType())</td></tr>
+        <tr><td><strong>approxCountDistinct</strong></td><td>City metrics</td><td>HyperLogLog cardinality estimation; memory-efficient at scale</td><td>F.approx_count_distinct("Place")</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Not-yet-run notice -->
+<div class="warn-box" id="sparkNotRun" style="display:none;">
+  ⚠️ Spark analysis outputs not found. Run <code>python scripts/spark_analysis.py</code> first.<br>
+  The table above shows the techniques implemented — run the script to populate charts.
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+(async () => {
+  const data = await fetchJSON('/api/spark-data');
+  if (!data) return;
+
+  const cfg    = plotlyCfg();
+  const layout = plotlyLayout;
+
+  // Techniques badges
+  const techList = document.getElementById('techniquesList');
+  const techniques = data.techniques || [];
+  if (techniques.length) {
+    techList.innerHTML = techniques.map((t, i) => `
+      <span style="background:linear-gradient(135deg,rgba(124,58,237,0.25),rgba(76,29,149,0.15));
+        border:1px solid rgba(167,139,250,0.3);border-radius:20px;padding:6px 14px;
+        font-size:0.79rem;font-weight:500;color:#c4b5fd;white-space:nowrap;">
+        ${i+1}. ${t}
+      </span>`).join('');
+  }
+
+  if (!data.available) {
+    document.getElementById('sparkNotRun').style.display = '';
+    return;
+  }
+
+  // KPIs
+  const s = data.summary || {};
+  if (Object.keys(s).length) {
+    document.getElementById('sparkKpis').style.display = '';
+    setText('sp-total-reviews', fmt(s.total_reviews));
+    setText('sp-unique-cities', fmt(s.unique_cities));
+    setText('sp-unique-places', fmt(s.unique_places));
+    setText('sp-avg-rating', s.avg_rating ? `⭐ ${s.avg_rating}` : '—');
+  }
+
+  // Top Cities bar
+  if (data.top_cities && data.top_cities.length) {
+    document.getElementById('sparkChartRow1').style.display = '';
+    const tc = data.top_cities.slice().sort((a,b) => a.review_count - b.review_count);
+    Plotly.newPlot('chartSparkCities', [{
+      y: tc.map(c => c.City || c.city || '?'),
+      x: tc.map(c => c.review_count),
+      type: 'bar', orientation: 'h',
+      marker: { color: PALETTE_TEAL },
+      text: tc.map(c => `★ ${(c.avg_rating||0).toFixed(2)}`),
+      textposition: 'outside',
+    }], layout('Top Cities (Spark groupBy + rank())', 420, { yaxis_tickfont: 10 }), cfg);
+  }
+
+  // Top Places bar
+  if (data.top_places && data.top_places.length) {
+    const tp = data.top_places.slice().sort((a,b) => a.review_count - b.review_count);
+    Plotly.newPlot('chartSparkPlaces', [{
+      y: tp.map(p => (p.Place || p.place || '?').slice(0,28)),
+      x: tp.map(p => p.review_count),
+      type: 'bar', orientation: 'h',
+      marker: { color: PALETTE_PURP },
+    }], layout('Top Places (Spark groupBy + join)', 420, { yaxis_tickfont: 10 }), cfg);
+  }
+
+  // Rating distribution (Spark SQL)
+  if (data.rating_distribution && data.rating_distribution.length) {
+    document.getElementById('sparkRatingCard').style.display = '';
+    const rd = data.rating_distribution;
+    Plotly.newPlot('chartSparkRating', [{
+      x: rd.map(r => `${r.rating}★`),
+      y: rd.map(r => r.count),
+      type: 'bar',
+      marker: { color: PALETTE_SEQ },
+      text: rd.map(r => `${(r.pct||0).toFixed(1)}%`),
+      textposition: 'outside',
+    }], layout('Rating Distribution (via Spark SQL query)', 340), cfg);
+  }
+
+  // State metrics (Spark UDF)
+  if (data.state_metrics && data.state_metrics.length) {
+    document.getElementById('sparkStateCard').style.display = '';
+    const sm = data.state_metrics.slice().sort((a,b) =>
+      (a.total_reviews||0) - (b.total_reviews||0)).slice(-15);
+    Plotly.newPlot('chartSparkState', [{
+      y: sm.map(s => s.State),
+      x: sm.map(s => s.total_reviews || 0),
+      type: 'bar', orientation: 'h',
+      marker: { color: PALETTE_GREEN },
+      text: sm.map(s => `★ ${(s.avg_rating||0).toFixed(2)}`),
+      textposition: 'outside',
+    }], layout('State Tourism Volume (Spark UDF city→state)', 480, { yaxis_tickfont: 10 }), cfg);
+  }
+})();
+</script>
+{% endblock %}

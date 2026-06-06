@@ -1,0 +1,426 @@
+{% extends "base.html" %}
+{% block title %}India Tourism Map{% endblock %}
+{% block page_title %}India Tourism Map{% endblock %}
+{% block breadcrumb %}State-Level Choropleth{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>🗺️ India Tourism Choropleth Map</h1>
+  <p>State-level tourism intensity aggregated from city review data. Colour = average hotspot score.</p>
+</div>
+
+<div class="info-box">
+  <strong>Methodology:</strong> Each city in the dataset is mapped to its Indian state using a curated lookup.
+  Review counts, average ratings, sentiment scores, and hotspot scores are aggregated per state.
+  States with no matching cities appear grey.
+</div>
+
+<!-- Map metric selector -->
+<div style="display:flex;align-items:center;gap:12px;margin-bottom:18px;flex-wrap:wrap;">
+  <span style="font-size:.85rem;color:var(--text-muted);">Colour by:</span>
+  <button class="theme-toggle-btn active-metric" id="metricHotspot" onclick="setMetric('avg_hotspot_score','Avg Hotspot Score')">🔥 Hotspot Score</button>
+  <button class="theme-toggle-btn" id="metricRating"  onclick="setMetric('avg_rating','Avg Rating')">⭐ Avg Rating</button>
+  <button class="theme-toggle-btn" id="metricReviews" onclick="setMetric('total_reviews','Total Reviews')">📝 Total Reviews</button>
+  <button class="theme-toggle-btn" id="metricPolarity" onclick="setMetric('avg_polarity','Avg Sentiment')">💬 Sentiment</button>
+</div>
+
+<!-- Stats row -->
+<div class="kpi-grid" id="mapKpis" style="grid-template-columns:repeat(4,1fr);margin-bottom:20px;">
+  <div class="kpi-card">
+    <div class="kpi-icon">🗺️</div>
+    <div class="kpi-body"><div class="kpi-value" id="stat-states">—</div><div class="kpi-label">States Mapped</div></div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-icon">🏙️</div>
+    <div class="kpi-body"><div class="kpi-value" id="stat-cities">—</div><div class="kpi-label">Cities Resolved</div></div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-icon">🏆</div>
+    <div class="kpi-body"><div class="kpi-value" id="stat-top-state">—</div><div class="kpi-label">Top Tourism State</div></div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-icon">⭐</div>
+    <div class="kpi-body"><div class="kpi-value" id="stat-top-rating">—</div><div class="kpi-label">Highest Rated State</div></div>
+  </div>
+</div>
+
+<!-- The Map -->
+<div class="chart-card">
+  <div class="chart-card-header">
+    <div class="chart-card-title"><span class="icon">🗺️</span> India State Tourism Map
+      <span id="mapMetricLabel" style="font-size:.76rem;color:var(--text-muted);margin-left:8px;">— Hotspot Score</span>
+    </div>
+    <span id="mapStatus" style="font-size:.75rem;color:var(--text-muted);">Loading GeoJSON…</span>
+  </div>
+  <div id="chartIndiaMap" style="min-height:580px;"></div>
+  <div class="map-legend">
+    <span>Low</span>
+    <div class="legend-gradient"></div>
+    <span>High</span>
+    <span style="margin-left:16px;color:var(--text-muted);">Grey = no data in dataset</span>
+    <span style="margin-left:auto;font-size:.75rem;color:var(--accent-light);">💡 Click a state to drill down</span>
+  </div>
+</div>
+
+<!-- DRILL-DOWN PANEL (Feature 5) -->
+<div id="drillPanel" style="display:none;animation:fadeIn .35s ease;">
+  <div class="chart-card" style="border-left:3px solid var(--accent);">
+    <div class="chart-card-header">
+      <div class="chart-card-title"><span class="icon">📍</span>
+        <span id="drillStateName">State Detail</span>
+      </div>
+      <button class="theme-toggle-btn" onclick="closeDrill()" style="font-size:.78rem;">✕ Close</button>
+    </div>
+
+    <!-- State KPI mini-cards -->
+    <div class="kpi-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:18px;">
+      <div class="kpi-card">
+        <div class="kpi-icon">📝</div>
+        <div class="kpi-body"><div class="kpi-value" id="drill-reviews">—</div><div class="kpi-label">Total Reviews</div></div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-icon">⭐</div>
+        <div class="kpi-body"><div class="kpi-value" id="drill-rating">—</div><div class="kpi-label">Avg Rating</div></div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-icon">💬</div>
+        <div class="kpi-body"><div class="kpi-value" id="drill-sentiment">—</div><div class="kpi-label">Avg Sentiment</div></div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-icon">🔥</div>
+        <div class="kpi-body"><div class="kpi-value" id="drill-hotspot">—</div><div class="kpi-label">Avg Hotspot</div></div>
+      </div>
+    </div>
+
+    <!-- Top Cities + Top Places charts -->
+    <div class="row-2">
+      <div>
+        <div style="font-size:.82rem;font-weight:600;color:var(--text-muted);margin-bottom:8px;">🏙️ Top Cities</div>
+        <div id="chartDrillCities" style="min-height:260px;"></div>
+      </div>
+      <div>
+        <div style="font-size:.82rem;font-weight:600;color:var(--text-muted);margin-bottom:8px;">📍 Top Places</div>
+        <div id="chartDrillPlaces" style="min-height:260px;"></div>
+      </div>
+    </div>
+
+    <!-- Quick table -->
+    <div style="margin-top:16px;">
+      <div style="font-size:.82rem;font-weight:600;color:var(--text-muted);margin-bottom:8px;">📋 City Statistics</div>
+      <div class="data-table-wrap" style="max-height:260px;overflow-y:auto;">
+        <table class="data-table" id="drillTable">
+          <thead>
+            <tr><th>#</th><th>City</th><th>Hotspot Score</th><th>Avg Rating</th><th>Reviews</th><th>Sentiment</th></tr>
+          </thead>
+          <tbody id="drillTableBody"><tr><td colspan="6" style="text-align:center;color:var(--text-muted);padding:16px;">Click a state on the map above.</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- State Rankings Table -->
+<div class="chart-card">
+  <div class="chart-card-header">
+    <div class="chart-card-title"><span class="icon">📋</span> State-Level Tourism Statistics</div>
+  </div>
+  <div class="data-table-wrap">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>State</th>
+          <th>Total Reviews</th>
+          <th>Avg Rating</th>
+          <th>Avg Sentiment</th>
+          <th>Avg Hotspot Score</th>
+          <th>Cities Mapped</th>
+        </tr>
+      </thead>
+      <tbody id="stateTableBody">
+        <tr><td colspan="7"><div class="loading-overlay"><div class="spinner"></div></div></td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Bar Chart: Top states -->
+<div class="row-2">
+  <div class="chart-card">
+    <div class="chart-card-header">
+      <div class="chart-card-title"><span class="icon">📊</span> States by Hotspot Score</div>
+    </div>
+    <div id="chartStateBar" class="chart-container"></div>
+  </div>
+  <div class="chart-card">
+    <div class="chart-card-header">
+      <div class="chart-card-title"><span class="icon">📝</span> States by Total Reviews</div>
+    </div>
+    <div id="chartStateReviews" class="chart-container"></div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ── Config ────────────────────────────────────────────────────────────────────
+const GEOJSON_URL =
+  'https://gist.githubusercontent.com/jbrobst/56c13bbbf9d97d187fea01ca62ea5112' +
+  '/raw/e388c4cae20aa53cb5090210a42ebb9b765c0a36/india_states.geojson';
+
+let _geojson = null;
+let _stateData = null;
+let _currentMetric = 'avg_hotspot_score';
+let _currentLabel  = 'Avg Hotspot Score';
+
+// ── Metric button toggle ──────────────────────────────────────────────────────
+function setMetric(metric, label) {
+  _currentMetric = metric;
+  _currentLabel  = label;
+  document.getElementById('mapMetricLabel').textContent = '— ' + label;
+  ['metricHotspot','metricRating','metricReviews','metricPolarity'].forEach(id => {
+    document.getElementById(id).style.opacity = '0.55';
+    document.getElementById(id).style.borderColor = 'var(--border)';
+  });
+  const btnMap = {
+    avg_hotspot_score: 'metricHotspot', avg_rating: 'metricRating',
+    total_reviews: 'metricReviews', avg_polarity: 'metricPolarity',
+  };
+  const activeBtn = document.getElementById(btnMap[metric]);
+  if (activeBtn) { activeBtn.style.opacity = '1'; activeBtn.style.borderColor = 'var(--accent)'; }
+  if (_geojson && _stateData) renderMap();
+}
+
+// ── Render choropleth ─────────────────────────────────────────────────────────
+function renderMap() {
+  const states = _stateData.states;
+  if (!states || !states.length) return;
+
+  const metricVals = states.map(s => s[_currentMetric] || 0);
+  const colorscale  = _currentMetric === 'avg_polarity'
+    ? [[0,'#f87171'],[0.5,'#60a5fa'],[1,'#34d399']]
+    : [[0,'#1e1558'],[0.25,'#4338ca'],[0.5,'#7c3aed'],[0.75,'#a78bfa'],[1,'#34d399']];
+
+  const hoverTexts = states.map(s =>
+    `<b>${s.State}</b><br>` +
+    `Reviews: ${(s.total_reviews||0).toLocaleString()}<br>` +
+    `Avg Rating: ⭐ ${(s.avg_rating||0).toFixed(2)}<br>` +
+    `Sentiment: ${(s.avg_polarity||0).toFixed(3)}<br>` +
+    `Hotspot Score: ${(s.avg_hotspot_score||0).toFixed(4)}<br>` +
+    `Cities Mapped: ${s.num_cities||0}`
+  );
+
+  Plotly.react('chartIndiaMap', [{
+    type: 'choroplethmapbox',
+    geojson: _geojson,
+    locations: states.map(s => s.State),
+    z: metricVals,
+    featureidkey: 'properties.ST_NM',
+    colorscale: colorscale,
+    reversescale: false,
+    marker: { opacity: 0.85, line: { width: 1.2, color: '#1a1540' } },
+    colorbar: {
+      title: { text: _currentLabel, font: { color: '#c0bce8' } },
+      tickfont: { color: '#9090b8' },
+      bgcolor: 'rgba(255,255,255,0.05)',
+      bordercolor: 'rgba(255,255,255,0.1)',
+    },
+    text: hoverTexts,
+    hoverinfo: 'text',
+    showscale: true,
+  }], {
+    mapbox: { style: 'carto-darkmatter', center: { lat: 22.5, lon: 82.5 }, zoom: 3.5 },
+    paper_bgcolor: 'rgba(255,255,255,0.03)',
+    margin: { l: 0, r: 0, t: 10, b: 0 },
+    height: 570,
+    font: { family: 'Inter', color: '#c0bce8' },
+  }, plotlyCfg());
+
+  document.getElementById('mapStatus').textContent =
+    `${states.length} states mapped · ${(_stateData.mapped_cities||0)} cities resolved`;
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+(async () => {
+  // Fetch data in parallel
+  const [apiData, geojsonResp] = await Promise.all([
+    fetchJSON('/api/india-map-data'),
+    fetch(GEOJSON_URL),
+  ]);
+
+  if (!apiData) return;
+
+  if (apiData.error) {
+    document.getElementById('chartIndiaMap').innerHTML =
+      `<div class="warn-box" style="margin:20px;">${apiData.error}</div>`;
+    return;
+  }
+
+  if (!geojsonResp.ok) {
+    document.getElementById('chartIndiaMap').innerHTML =
+      `<div class="warn-box" style="margin:20px;">
+        Could not load India GeoJSON (requires internet access).
+        Check your connection and try again.
+      </div>`;
+    return;
+  }
+
+  _geojson   = await geojsonResp.json();
+  _stateData = apiData;
+  const states = apiData.states || [];
+
+  // KPI stats
+  const topState  = states.reduce((a,b) => (a.avg_hotspot_score||0) > (b.avg_hotspot_score||0) ? a : b, {});
+  const topRating = states.reduce((a,b) => (a.avg_rating||0) > (b.avg_rating||0) ? a : b, {});
+  setText('stat-states',    states.length);
+  setText('stat-cities',    apiData.mapped_cities || '—');
+  setText('stat-top-state', topState.State  || '—');
+  setText('stat-top-rating', topRating.State ? `${topRating.State} (${(topRating.avg_rating||0).toFixed(2)}★)` : '—');
+
+  // Render map with default metric
+  setMetric('avg_hotspot_score', 'Avg Hotspot Score');
+
+  // ── Plotly click → drill down ─────────────────────────────────────────────
+  const mapEl = document.getElementById('chartIndiaMap');
+  mapEl.on('plotly_click', function(eventData) {
+    if (!eventData || !eventData.points || !eventData.points.length) return;
+    const stateName = eventData.points[0].location;
+    if (stateName) loadDrillDown(stateName);
+  });
+
+  // ── State Table (state name is now clickable) ─────────────────────────────
+  const sorted = states.slice().sort((a,b) => (b.avg_hotspot_score||0) - (a.avg_hotspot_score||0));
+  document.getElementById('stateTableBody').innerHTML = sorted.map((s, i) => {
+    const pct = Math.round((s.avg_hotspot_score||0) * 100);
+    const escapedState = s.State.replace(/'/g, "\\'");
+    return `<tr>
+      <td><span class="rank-badge ${i<3?['gold','silver','bronze'][i]:''}">${i+1}</span></td>
+      <td><strong style="cursor:pointer;color:var(--accent-light);" onclick="loadDrillDown('${escapedState}')">${s.State}</strong></td>
+      <td>${fmt(s.total_reviews)}</td>
+      <td>⭐ ${(s.avg_rating||0).toFixed(2)}</td>
+      <td class="${(s.avg_polarity||0)>0?'badge-positive':'badge-negative'}">${(s.avg_polarity||0).toFixed(3)}</td>
+      <td>
+        <div class="score-bar">
+          <div class="score-bar-bg"><div class="score-bar-fill" style="width:${pct}%"></div></div>
+          <span class="score-val">${(s.avg_hotspot_score||0).toFixed(3)}</span>
+        </div>
+      </td>
+      <td>${s.num_cities||0}</td>
+    </tr>`;
+  }).join('');
+
+  // ── Bar Charts ───────────────────────────────────────────────────────────
+  const cfg = plotlyCfg();
+  const layout = plotlyLayout;
+
+  const sortedScore = sorted.slice().sort((a,b) => a.avg_hotspot_score - b.avg_hotspot_score);
+  Plotly.newPlot('chartStateBar', [{
+    y: sortedScore.map(s => s.State),
+    x: sortedScore.map(s => s.avg_hotspot_score || 0),
+    type: 'bar', orientation: 'h',
+    marker: { color: PALETTE_PURP },
+    text: sortedScore.map(s => (s.avg_hotspot_score||0).toFixed(3)),
+    textposition: 'outside',
+  }], layout('States by Hotspot Score', 460, { yaxis_tickfont: 10 }), cfg);
+
+  const sortedRev = sorted.slice().sort((a,b) => a.total_reviews - b.total_reviews);
+  Plotly.newPlot('chartStateReviews', [{
+    y: sortedRev.map(s => s.State),
+    x: sortedRev.map(s => s.total_reviews || 0),
+    type: 'bar', orientation: 'h',
+    marker: { color: PALETTE_TEAL },
+  }], layout('States by Total Reviews', 460, { yaxis_tickfont: 10 }), cfg);
+})();
+
+// ── Drill-Down Functions ────────────────────────────────────────────────────
+async function loadDrillDown(stateName) {
+  const panel = document.getElementById('drillPanel');
+  panel.style.display = 'block';
+  document.getElementById('drillStateName').textContent = stateName;
+  ['drill-reviews','drill-rating','drill-sentiment','drill-hotspot'].forEach(id =>
+    document.getElementById(id).textContent = '…');
+  loading('chartDrillCities', true);
+  loading('chartDrillPlaces', true);
+  document.getElementById('drillTableBody').innerHTML =
+    '<tr><td colspan="6"><div class="loading-overlay"><div class="spinner"></div></div></td></tr>';
+
+  // Smooth scroll to panel
+  panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+  const data = await fetchJSON('/api/state-detail?state=' + encodeURIComponent(stateName) + '&top_n=10');
+  if (!data || data.error) {
+    loading('chartDrillCities', false, data ? data.error : 'Failed to load state data.');
+    loading('chartDrillPlaces', false, '');
+    return;
+  }
+
+  // KPI cards
+  setText('drill-reviews',   fmt(data.total_reviews));
+  setText('drill-rating',    data.avg_rating   != null ? '⭐ ' + data.avg_rating.toFixed(2) : '—');
+  setText('drill-sentiment', data.avg_polarity  != null ? data.avg_polarity.toFixed(4)      : '—');
+  setText('drill-hotspot',   data.avg_hotspot_score != null ? data.avg_hotspot_score.toFixed(4) : '—');
+
+  const cfg2 = plotlyCfg();
+
+  // Cities chart
+  if (data.top_cities && data.top_cities.length) {
+    const cities = data.top_cities.slice().sort((a,b) => a.hotspot_score - b.hotspot_score);
+    Plotly.react('chartDrillCities', [{
+      y: cities.map(c => c.City),
+      x: cities.map(c => c.hotspot_score || 0),
+      type: 'bar', orientation: 'h',
+      marker: { color: '#7c3aed' },
+      text: cities.map(c => (c.hotspot_score||0).toFixed(3)),
+      textposition: 'outside',
+      hovertemplate: '<b>%{y}</b><br>Hotspot: %{x:.4f}<extra></extra>',
+    }], {
+      ...plotlyLayout('Top Cities — Hotspot Score', Math.max(240, cities.length * 28), { yaxis_tickfont: 10 }),
+      margin: { l: 120, r: 50, t: 40, b: 30 },
+    }, cfg2);
+  } else {
+    loading('chartDrillCities', false, 'No cities found for this state.');
+  }
+
+  // Places chart
+  if (data.top_places && data.top_places.length) {
+    const places = data.top_places.slice().sort((a,b) => a.hotspot_score - b.hotspot_score);
+    Plotly.react('chartDrillPlaces', [{
+      y: places.map(p => (p.Place||'').length > 22 ? p.Place.slice(0,21)+'…' : p.Place),
+      x: places.map(p => p.hotspot_score || 0),
+      type: 'bar', orientation: 'h',
+      marker: { color: '#059669' },
+      text: places.map(p => (p.hotspot_score||0).toFixed(3)),
+      textposition: 'outside',
+      hovertemplate: '<b>%{y}</b><br>Hotspot: %{x:.4f}<extra></extra>',
+    }], {
+      ...plotlyLayout('Top Places — Hotspot Score', Math.max(240, places.length * 28), { yaxis_tickfont: 9 }),
+      margin: { l: 160, r: 50, t: 40, b: 30 },
+    }, cfg2);
+  } else {
+    loading('chartDrillPlaces', false, 'No places found for this state.');
+  }
+
+  // Table
+  const tbody = document.getElementById('drillTableBody');
+  tbody.innerHTML = (data.top_cities || []).map((c, i) => `<tr>
+    <td><span class="rank-badge ${i<3?['gold','silver','bronze'][i]:''}">${i+1}</span></td>
+    <td style="font-weight:500;">${c.City||'—'}</td>
+    <td>
+      <div class="score-bar">
+        <div class="score-bar-bg"><div class="score-bar-fill" style="width:${Math.round((c.hotspot_score||0)*100)}%"></div></div>
+        <span class="score-val">${(c.hotspot_score||0).toFixed(3)}</span>
+      </div>
+    </td>
+    <td>⭐ ${(c.avg_rating||0).toFixed(2)}</td>
+    <td>${fmt(c.review_count)}</td>
+    <td class="${(c.avg_polarity||0)>0?'badge-positive':'badge-negative'}">${(c.avg_polarity||0).toFixed(3)}</td>
+  </tr>`).join('');
+}
+
+function closeDrill() {
+  document.getElementById('drillPanel').style.display = 'none';
+}
+</script>
+{% endblock %}
+

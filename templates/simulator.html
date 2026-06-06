@@ -1,0 +1,293 @@
+{% extends "base.html" %}
+{% block title %}Hotspot Weight Simulator{% endblock %}
+{% block page_title %}Hotspot Weight Simulator{% endblock %}
+{% block breadcrumb %}Analytics Tools › Simulator{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>⚖️ Hotspot Weight Simulator</h1>
+  <p>Adjust rating, volume, and sentiment weights to re-rank destinations in real time — original scores are never overwritten.</p>
+</div>
+
+<div class="info-box">
+  <strong>Custom Score Formula:</strong>&nbsp;
+  custom_score = (w<sub>rating</sub> / Σw) × rating_score + (w<sub>volume</sub> / Σw) × volume_score + (w<sub>sentiment</sub> / Σw) × sentiment_score
+</div>
+
+<!-- Controls row -->
+<div class="chart-card" style="margin-bottom:22px;">
+  <div class="chart-card-header">
+    <div class="chart-card-title"><span class="icon">🎛️</span> Simulation Controls</div>
+    <!-- View toggle -->
+    <div style="display:flex;gap:8px;">
+      <button class="theme-toggle-btn" id="btnPlaces" onclick="switchView('places')">📍 Places</button>
+      <button class="theme-toggle-btn" id="btnCities" onclick="switchView('cities')" style="opacity:.55;">🏙️ Cities</button>
+    </div>
+  </div>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:24px;align-items:end;flex-wrap:wrap;">
+
+    <!-- Rating weight -->
+    <div>
+      <label class="sim-label">⭐ Rating Weight: <strong id="ratingVal">50</strong></label>
+      <input type="range" id="sliderRating" min="0" max="100" value="50"
+             class="sim-slider" oninput="onSlider()">
+    </div>
+
+    <!-- Volume weight -->
+    <div>
+      <label class="sim-label">📊 Volume Weight: <strong id="volumeVal">30</strong></label>
+      <input type="range" id="sliderVolume" min="0" max="100" value="30"
+             class="sim-slider" oninput="onSlider()">
+    </div>
+
+    <!-- Sentiment weight -->
+    <div>
+      <label class="sim-label">💬 Sentiment Weight: <strong id="sentimentVal">20</strong></label>
+      <input type="range" id="sliderSentiment" min="0" max="100" value="20"
+             class="sim-slider" oninput="onSlider()">
+    </div>
+
+    <!-- Top N -->
+    <div>
+      <label class="sim-label">🔢 Top N</label>
+      <select id="simTopN" onchange="onSlider()"
+              style="background:var(--bg-card);border:1px solid var(--border);color:var(--text-primary);
+                     border-radius:8px;padding:7px 12px;font-size:.84rem;width:100%;">
+        <option value="15">15</option>
+        <option value="25" selected>25</option>
+        <option value="50">50</option>
+        <option value="100">100</option>
+      </select>
+    </div>
+  </div>
+
+  <!-- Weight summary bar -->
+  <div style="margin-top:18px;">
+    <div style="display:flex;gap:6px;height:8px;border-radius:6px;overflow:hidden;">
+      <div id="barRating"   style="background:#7c3aed;transition:flex .25s;"></div>
+      <div id="barVolume"   style="background:#2563eb;transition:flex .25s;"></div>
+      <div id="barSentiment"style="background:#059669;transition:flex .25s;"></div>
+    </div>
+    <div style="display:flex;justify-content:space-between;font-size:.72rem;color:var(--text-muted);margin-top:5px;">
+      <span id="pctRating"   style="color:#a78bfa;">Rating 50%</span>
+      <span id="pctVolume"   style="color:#60a5fa;">Volume 30%</span>
+      <span id="pctSentiment"style="color:#34d399;">Sentiment 20%</span>
+    </div>
+  </div>
+</div>
+
+<!-- Bar chart -->
+<div class="chart-card">
+  <div class="chart-card-header">
+    <div class="chart-card-title"><span class="icon">📊</span> Custom Score Ranking</div>
+    <div style="font-size:.78rem;color:var(--text-muted);" id="simSubtitle">Places — Top 25</div>
+  </div>
+  <div id="chartSimBar" class="chart-container-lg"></div>
+</div>
+
+<!-- Results table -->
+<div class="chart-card">
+  <div class="chart-card-header">
+    <div class="chart-card-title"><span class="icon">🏆</span> Full Simulation Table</div>
+  </div>
+  <div class="data-table-wrap">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Rank</th>
+          <th id="simNameCol">Place</th>
+          <th>Custom Score</th>
+          <th>Original Score</th>
+          <th>Avg Rating</th>
+          <th>Reviews</th>
+          <th>Sentiment</th>
+          <th>Rank Δ</th>
+        </tr>
+      </thead>
+      <tbody id="simTableBody">
+        <tr><td colspan="8"><div class="loading-overlay"><div class="spinner"></div><div class="loading-text">Loading…</div></div></td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<style>
+  .sim-label {
+    display: block;
+    font-size: .8rem;
+    color: var(--text-muted);
+    margin-bottom: 8px;
+    font-weight: 500;
+  }
+  .sim-label strong { color: var(--accent-light); }
+  .sim-slider {
+    -webkit-appearance: none;
+    width: 100%;
+    height: 6px;
+    border-radius: 3px;
+    background: rgba(255,255,255,0.1);
+    outline: none;
+    cursor: pointer;
+  }
+  .sim-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 18px; height: 18px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #7c3aed, #a78bfa);
+    box-shadow: 0 0 6px rgba(124,58,237,0.5);
+    cursor: pointer;
+    transition: transform .15s;
+  }
+  .sim-slider::-webkit-slider-thumb:hover { transform: scale(1.2); }
+  .delta-up   { color: #34d399; font-weight:700; }
+  .delta-down { color: #f87171; font-weight:700; }
+  .delta-same { color: var(--text-muted); }
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+'use strict';
+let _simRawData = null;   // full dataset from API
+let _simView    = 'places';
+
+// ── Load data once ────────────────────────────────────────────────────────────
+async function simLoad() {
+  const data = await fetchJSON('/api/simulator-data');
+  if (!data || data.error) {
+    document.getElementById('simTableBody').innerHTML =
+      `<tr><td colspan="8"><div class="warn-box">⚠️ ${(data && data.error) || 'Could not load hotspot data.'}</div></td></tr>`;
+    return;
+  }
+  _simRawData = data;
+  onSlider();
+}
+
+// ── Switch Places / Cities ────────────────────────────────────────────────────
+function switchView(v) {
+  _simView = v;
+  document.getElementById('btnPlaces').style.opacity = v === 'places' ? '1' : '.55';
+  document.getElementById('btnCities').style.opacity = v === 'cities' ? '1' : '.55';
+  document.getElementById('simNameCol').textContent  = v === 'places' ? 'Place' : 'City';
+  onSlider();
+}
+
+// ── Slider change handler ─────────────────────────────────────────────────────
+function onSlider() {
+  const wr = +document.getElementById('sliderRating').value;
+  const wv = +document.getElementById('sliderVolume').value;
+  const ws = +document.getElementById('sliderSentiment').value;
+
+  document.getElementById('ratingVal').textContent   = wr;
+  document.getElementById('volumeVal').textContent   = wv;
+  document.getElementById('sentimentVal').textContent= ws;
+
+  const total = wr + wv + ws || 1;
+  const pr = Math.round(wr / total * 100);
+  const pv = Math.round(wv / total * 100);
+  const ps = 100 - pr - pv;
+
+  document.getElementById('barRating').style.flex    = wr;
+  document.getElementById('barVolume').style.flex    = wv;
+  document.getElementById('barSentiment').style.flex = ws;
+  document.getElementById('pctRating').textContent    = `Rating ${pr}%`;
+  document.getElementById('pctVolume').textContent    = `Volume ${pv}%`;
+  document.getElementById('pctSentiment').textContent = `Sentiment ${ps}%`;
+
+  if (!_simRawData) return;
+  renderSim(wr, wv, ws);
+}
+
+// ── Compute + Render ──────────────────────────────────────────────────────────
+function renderSim(wr, wv, ws) {
+  const topN   = +document.getElementById('simTopN').value;
+  const nameKey = _simView === 'places' ? 'Place' : 'City';
+  const raw    = _simView === 'places' ? _simRawData.places : _simRawData.cities;
+
+  if (!raw || !raw.length) {
+    loading('chartSimBar', false, `No ${_simView} data available.`);
+    return;
+  }
+
+  const total = (wr + wv + ws) || 1;
+  const nr = wr / total, nv = wv / total, ns = ws / total;
+
+  // Compute custom_score for all rows
+  const scored = raw.map((r, i) => ({
+    ...r,
+    _origRank:    i + 1,
+    custom_score: nr * (r.rating_score   || 0)
+                + nv * (r.volume_score   || 0)
+                + ns * (r.sentiment_score || 0),
+  }));
+
+  // Sort descending by custom_score
+  scored.sort((a, b) => b.custom_score - a.custom_score);
+  const topRows = scored.slice(0, topN);
+
+  // Assign new rank & compute delta
+  topRows.forEach((r, i) => {
+    r._newRank   = i + 1;
+    r._rankDelta = r._origRank - r._newRank;  // positive = moved up
+  });
+
+  // Chart
+  const sorted4Chart = topRows.slice().sort((a, b) => a.custom_score - b.custom_score);
+  Plotly.react('chartSimBar', [{
+    y: sorted4Chart.map(r => { const n = r[nameKey]; return n.length > 28 ? n.slice(0,27)+'…' : n; }),
+    x: sorted4Chart.map(r => r.custom_score),
+    type: 'bar', orientation: 'h',
+    marker: {
+      color: sorted4Chart.map(r => r.custom_score),
+      colorscale: [
+        [0,   'rgba(76,29,149,0.6)'],
+        [0.5, 'rgba(124,58,237,0.85)'],
+        [1,   '#a78bfa'],
+      ],
+      showscale: false,
+    },
+    text: sorted4Chart.map(r => r.custom_score.toFixed(3)),
+    textposition: 'outside',
+    hovertemplate: '<b>%{y}</b><br>Custom Score: %{x:.4f}<extra></extra>',
+  }], {
+    ...plotlyLayout(`Custom Ranking — Top ${topN} ${_simView === 'places' ? 'Places' : 'Cities'}`,
+      Math.max(420, topN * 22), { yaxis_tickfont: 9 }),
+  }, plotlyCfg());
+
+  document.getElementById('simSubtitle').textContent =
+    `${_simView === 'places' ? 'Places' : 'Cities'} — Top ${topN}`;
+
+  // Table
+  const tbody = document.getElementById('simTableBody');
+  tbody.innerHTML = topRows.map((r, i) => {
+    const rankClass = i === 0 ? 'gold' : i === 1 ? 'silver' : i === 2 ? 'bronze' : '';
+    const pct       = Math.round(r.custom_score * 100);
+    const delta     = r._rankDelta;
+    const deltaStr  = delta > 0
+      ? `<span class="delta-up">▲${delta}</span>`
+      : delta < 0
+      ? `<span class="delta-down">▼${Math.abs(delta)}</span>`
+      : `<span class="delta-same">—</span>`;
+    return `<tr>
+      <td><span class="rank-badge ${rankClass}">${i+1}</span></td>
+      <td style="font-weight:500;">${r[nameKey] || '—'}</td>
+      <td>
+        <div class="score-bar">
+          <div class="score-bar-bg"><div class="score-bar-fill" style="width:${pct}%"></div></div>
+          <span class="score-val">${r.custom_score.toFixed(3)}</span>
+        </div>
+      </td>
+      <td>${(r.hotspot_score || 0).toFixed(3)}</td>
+      <td>⭐ ${(r.avg_rating  || 0).toFixed(2)}</td>
+      <td>${fmt(r.review_count)}</td>
+      <td class="${(r.avg_polarity||0)>0?'badge-positive':'badge-negative'}">${(r.avg_polarity||0).toFixed(3)}</td>
+      <td>${deltaStr}</td>
+    </tr>`;
+  }).join('');
+}
+
+// Init
+simLoad();
+</script>
+{% endblock %}

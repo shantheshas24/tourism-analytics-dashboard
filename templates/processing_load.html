@@ -1,0 +1,241 @@
+{% extends "base.html" %}
+{% block title %}Processing Load Analysis{% endblock %}
+{% block page_title %}Processing Load Analysis{% endblock %}
+{% block breadcrumb %}Big Data — Pandas vs Spark Benchmark{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>📈 Processing Load Analysis</h1>
+  <p>Impact of data size on processing time — comparing Pandas and Apache Spark at multiple scales.</p>
+</div>
+
+<div class="info-box">
+  <strong>Methodology:</strong> A standard groupBy aggregation (compute count, average rating, std deviation, and distinct places per city)
+  was benchmarked on random sub-samples of the 1.48M-row dataset at 100K, 500K, 1M, and full size.
+  Each measurement is the median of multiple runs to reduce noise. Spark startup time is measured separately.
+</div>
+
+<!-- Status banner -->
+<div id="notRunBanner" class="warn-box" style="display:none;">
+  ⚠️ Processing load data not found. Run <code>python scripts/processing_load_analysis.py</code> first.
+</div>
+
+<!-- KPI row: Spark startup overhead -->
+<div class="kpi-grid" id="procKpis" style="display:none;">
+  <div class="kpi-card">
+    <div class="kpi-icon">⏱️</div>
+    <div class="kpi-body">
+      <div class="kpi-value" id="kpi-startup">—</div>
+      <div class="kpi-label">Spark Startup (sec)</div>
+    </div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-icon">🐼</div>
+    <div class="kpi-body">
+      <div class="kpi-value" id="kpi-pandas-full">—</div>
+      <div class="kpi-label">Pandas — Full Dataset (sec)</div>
+    </div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-icon">⚡</div>
+    <div class="kpi-body">
+      <div class="kpi-value" id="kpi-spark-full">—</div>
+      <div class="kpi-label">Spark — Full Dataset (sec)</div>
+    </div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-icon">🚀</div>
+    <div class="kpi-body">
+      <div class="kpi-value" id="kpi-pandas-rps">—</div>
+      <div class="kpi-label">Pandas Max Throughput (rows/s)</div>
+    </div>
+  </div>
+</div>
+
+<!-- Charts row (Plotly — populated from API data) -->
+<div class="row-2" id="procChartRow" style="display:none;">
+  <div class="chart-card">
+    <div class="chart-card-header">
+      <div class="chart-card-title"><span class="icon">⏱️</span> Processing Time vs Data Size</div>
+    </div>
+    <div id="chartProcTime" class="chart-container"></div>
+  </div>
+  <div class="chart-card">
+    <div class="chart-card-header">
+      <div class="chart-card-title"><span class="icon">🚀</span> Throughput vs Data Size</div>
+    </div>
+    <div id="chartThroughput" class="chart-container"></div>
+  </div>
+</div>
+
+<!-- Static chart images (always shown when files exist) -->
+<div class="row-2" id="staticChartRow">
+  <div class="chart-card">
+    <div class="chart-card-header">
+      <div class="chart-card-title"><span class="icon">⏱️</span> Processing Time Chart (Generated)</div>
+    </div>
+    <img src="/charts/processing_time_vs_size.png"
+         alt="Processing Time vs Data Size"
+         style="width:100%;border-radius:10px;display:block;"
+         onerror="this.parentElement.parentElement.style.display='none'">
+  </div>
+  <div class="chart-card">
+    <div class="chart-card-header">
+      <div class="chart-card-title"><span class="icon">🚀</span> Throughput Chart (Generated)</div>
+    </div>
+    <img src="/charts/throughput_vs_size.png"
+         alt="Throughput vs Data Size"
+         style="width:100%;border-radius:10px;display:block;"
+         onerror="this.parentElement.parentElement.style.display='none'">
+  </div>
+</div>
+
+<!-- Data Table -->
+<div class="chart-card" id="procTableCard" style="display:none;">
+  <div class="chart-card-header">
+    <div class="chart-card-title"><span class="icon">📋</span> Raw Benchmark Data</div>
+  </div>
+  <div class="data-table-wrap">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Method</th>
+          <th>Sample Size</th>
+          <th>Elapsed (s)</th>
+          <th>Rows/Second</th>
+          <th>Notes</th>
+        </tr>
+      </thead>
+      <tbody id="procTableBody"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Interpretation -->
+<div class="chart-card">
+  <div class="chart-card-header">
+    <div class="chart-card-title"><span class="icon">💡</span> Interpretation</div>
+  </div>
+  <div id="interpretText" style="color:#b8b4d0;line-height:1.7;font-size:0.9rem;padding:4px 0;">
+    Loading interpretation...
+  </div>
+  <br>
+  <div style="color:#9ca3af;font-size:0.85rem;line-height:1.7;">
+    <strong style="color:#c4b5fd;">Key Insight:</strong><br>
+    Pandas outperforms Spark on a single machine due to Spark's JVM startup overhead and
+    inter-process serialisation costs. However, in a real Hadoop/YARN/Kubernetes cluster,
+    Spark sessions are persistent (no per-job startup cost), and work is parallelised across
+    many CPU cores or worker nodes — making Spark significantly faster for 100M+ row datasets.
+    <br><br>
+    <strong style="color:#c4b5fd;">Scalability Argument:</strong><br>
+    This analysis uses a 1.48M-row dataset. Spark's architecture scales linearly — add 10 worker
+    nodes and throughput increases ~10×. Pandas is memory-bound and single-threaded per operation.
+    At 10–100 million rows, Spark becomes the only practical choice.
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+(async () => {
+  const data = await fetchJSON('/api/processing-load');
+  if (!data) return;
+
+  if (!data.available) {
+    document.getElementById('notRunBanner').style.display = '';
+    return;
+  }
+
+  const cfg    = plotlyCfg();
+  const layout = plotlyLayout;
+
+  const pandasRows = (data.pandas || []).filter(r => r.sample_size > 0);
+  const sparkRows  = (data.spark  || []).filter(r => r.sample_size > 0);
+
+  // KPIs
+  document.getElementById('procKpis').style.display = '';
+
+  const pandasFull = pandasRows.slice(-1)[0];
+  const sparkFull  = sparkRows.slice(-1)[0];
+
+  // Find startup row (sample_size == 0)
+  const startupRow = (data.spark || []).find(r => r.sample_size === 0);
+  const startupSec = startupRow ? startupRow.elapsed_seconds : null;
+  setText('kpi-startup',     startupSec ? `${startupSec.toFixed(1)}s` : 'N/A');
+  setText('kpi-pandas-full', pandasFull ? `${pandasFull.elapsed_seconds.toFixed(2)}s` : '—');
+  setText('kpi-spark-full',  sparkFull  ? `${sparkFull.elapsed_seconds.toFixed(2)}s`  : '—');
+  const maxPandasRps = Math.max(...pandasRows.map(r => r.rows_per_second || 0));
+  setText('kpi-pandas-rps',  maxPandasRps > 0 ? `${(maxPandasRps/1000).toFixed(0)}K` : '—');
+
+  // Charts
+  document.getElementById('procChartRow').style.display = '';
+
+  const sizes = [...new Set([...pandasRows, ...sparkRows].map(r => r.sample_size))].sort((a,b)=>a-b);
+
+  const pEl = pandasRows.map(r => r.elapsed_seconds);
+  const sEl = sparkRows.map(r => r.elapsed_seconds);
+  const pSizes = pandasRows.map(r => r.sample_size);
+  const sSizes = sparkRows.map(r => r.sample_size);
+
+  // Time chart
+  Plotly.newPlot('chartProcTime', [
+    {
+      x: pSizes.map(v => v/1000), y: pEl,
+      name: 'Pandas', mode: 'lines+markers', type: 'scatter',
+      line: { color: '#14b8a6', width: 3 }, marker: { size: 9, symbol: 'circle' },
+    },
+    {
+      x: sSizes.map(v => v/1000), y: sEl,
+      name: 'Spark', mode: 'lines+markers', type: 'scatter',
+      line: { color: '#a78bfa', width: 3 }, marker: { size: 9, symbol: 'square' },
+    },
+    ...(startupSec ? [{
+      x: [0, Math.max(...[...pSizes,...sSizes])/1000],
+      y: [startupSec, startupSec],
+      name: `Spark startup (${startupSec.toFixed(1)}s)`,
+      mode: 'lines', type: 'scatter',
+      line: { color: '#f87171', dash: 'dash', width: 1.5 },
+    }] : []),
+  ], layout('Processing Time vs Data Size', 360, {
+    xaxis_title: 'Sample Size (thousands rows)',
+    yaxis_title: 'Elapsed Time (seconds)',
+  }), cfg);
+
+  // Throughput chart
+  const pRps = pandasRows.map(r => (r.rows_per_second||0)/1000);
+  const sRps = sparkRows.map(r => (r.rows_per_second||0)/1000);
+  Plotly.newPlot('chartThroughput', [
+    {
+      x: pSizes.map(v => v/1000), y: pRps,
+      name: 'Pandas', mode: 'lines+markers', type: 'scatter',
+      line: { color: '#14b8a6', width: 3 }, marker: { size: 9 },
+    },
+    {
+      x: sSizes.map(v => v/1000), y: sRps,
+      name: 'Spark', mode: 'lines+markers', type: 'scatter',
+      line: { color: '#a78bfa', width: 3 }, marker: { size: 9, symbol: 'square' },
+    },
+  ], layout('Throughput vs Data Size', 360, {
+    xaxis_title: 'Sample Size (thousands rows)',
+    yaxis_title: 'Throughput (K rows/second)',
+  }), cfg);
+
+  // Table
+  document.getElementById('procTableCard').style.display = '';
+  const allRows = [...(data.pandas || []), ...(data.spark || [])];
+  const tbody = document.getElementById('procTableBody');
+  tbody.innerHTML = allRows.map(r => `
+    <tr>
+      <td><span style="color:${r.method==='Pandas'?'#14b8a6':'#a78bfa'};font-weight:600;">${r.method}</span></td>
+      <td>${r.sample_size > 0 ? fmt(r.sample_size) : 'Startup'}</td>
+      <td>${r.elapsed_seconds != null ? r.elapsed_seconds.toFixed(4) : '—'}</td>
+      <td>${r.rows_per_second != null && r.rows_per_second > 0 ? fmt(Math.round(r.rows_per_second)) : '—'}</td>
+      <td style="font-size:0.8rem;color:#888;">${r.notes || ''}</td>
+    </tr>`).join('');
+
+  // Interpretation
+  document.getElementById('interpretText').textContent = data.interpretation || '';
+})();
+</script>
+{% endblock %}

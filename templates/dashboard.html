@@ -1,0 +1,142 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block page_title %}Dashboard{% endblock %}
+{% block breadcrumb %}Overview{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>📊 Tourism Analytics Dashboard</h1>
+  <p>Comprehensive overview of 1.48M tourism reviews across India's top destinations.</p>
+</div>
+
+<!-- KPI Cards -->
+<div class="kpi-grid" id="kpiGrid">
+  <div class="kpi-card">
+    <div class="kpi-icon">📝</div>
+    <div class="kpi-body">
+      <div class="kpi-value" id="kpi-reviews">—</div>
+      <div class="kpi-label">Total Reviews</div>
+    </div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-icon">🏙️</div>
+    <div class="kpi-body">
+      <div class="kpi-value" id="kpi-cities">—</div>
+      <div class="kpi-label">Unique Cities</div>
+    </div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-icon">📍</div>
+    <div class="kpi-body">
+      <div class="kpi-value" id="kpi-places">—</div>
+      <div class="kpi-label">Tourist Places</div>
+    </div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-icon">⭐</div>
+    <div class="kpi-body">
+      <div class="kpi-value" id="kpi-rating">—</div>
+      <div class="kpi-label">Avg Rating</div>
+    </div>
+  </div>
+</div>
+
+<!-- Row 1: Rating Distribution + Top Cities -->
+<div class="row-2">
+  <div class="chart-card">
+    <div class="chart-card-header">
+      <div class="chart-card-title"><span class="icon">📈</span> Rating Distribution</div>
+    </div>
+    <div id="chartRatingDist" class="chart-container"></div>
+  </div>
+  <div class="chart-card">
+    <div class="chart-card-header">
+      <div class="chart-card-title"><span class="icon">🏙️</span> Top 20 Cities by Review Volume</div>
+    </div>
+    <div id="chartTopCities" class="chart-container"></div>
+  </div>
+</div>
+
+<!-- Row 2: Top Hotspot Cities + Top Hotspot Places -->
+<div class="row-2">
+  <div class="chart-card">
+    <div class="chart-card-header">
+      <div class="chart-card-title"><span class="icon">🔥</span> Top Hotspot Cities</div>
+    </div>
+    <div id="chartHotspotCities" class="chart-container"></div>
+  </div>
+  <div class="chart-card">
+    <div class="chart-card-header">
+      <div class="chart-card-title"><span class="icon">🏆</span> Top Hotspot Places</div>
+    </div>
+    <div id="chartHotspotPlaces" class="chart-container"></div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+(async () => {
+  const data = await fetchJSON('/api/dashboard-stats');
+  if (!data) return;
+
+  const kpis = data.kpis || {};
+  setText('kpi-reviews', fmt(kpis.total_reviews));
+  setText('kpi-cities',  fmt(kpis.total_cities));
+  setText('kpi-places',  fmt(kpis.total_places));
+  setText('kpi-rating',  kpis.avg_rating ? `⭐ ${kpis.avg_rating}` : '—');
+
+  const cfg = plotlyCfg();
+  const layout = plotlyLayout;
+
+  // Rating Distribution bar
+  if (data.rating_distribution && data.rating_distribution.length) {
+    const rd = data.rating_distribution;
+    Plotly.newPlot('chartRatingDist', [{
+      x: rd.map(r => `${r.rating}★`),
+      y: rd.map(r => r.count),
+      type: 'bar',
+      marker: { color: PALETTE_SEQ, line: { width: 0 } },
+      text: rd.map(r => `${r.pct ? r.pct.toFixed(1)+'%' : ''}`),
+      textposition: 'outside',
+    }], layout('Rating Distribution', 360), cfg);
+  } else loading('chartRatingDist', false);
+
+  // Top Cities horizontal bar
+  if (data.top_cities && data.top_cities.length) {
+    const tc = data.top_cities.slice().sort((a,b) => a.review_count - b.review_count);
+    Plotly.newPlot('chartTopCities', [{
+      y: tc.map(c => c.City),
+      x: tc.map(c => c.review_count),
+      type: 'bar', orientation: 'h',
+      marker: { color: PALETTE_TEAL },
+    }], layout('Top 20 Cities', 360, { yaxis_tickfont: 10 }), cfg);
+  } else loading('chartTopCities', false);
+
+  // Top Hotspot Cities
+  if (data.top_hotspot_cities && data.top_hotspot_cities.length) {
+    const hc = data.top_hotspot_cities.slice().sort((a,b) => a.hotspot_score - b.hotspot_score);
+    Plotly.newPlot('chartHotspotCities', [{
+      y: hc.map(c => c.City),
+      x: hc.map(c => c.hotspot_score),
+      type: 'bar', orientation: 'h',
+      marker: { color: PALETTE_PURP },
+    }], layout('Hotspot Cities', 380, { xaxis_range: [0,1] }), cfg);
+  } else loading('chartHotspotCities', false);
+
+  // Top Hotspot Places
+  if (data.top_hotspot_places && data.top_hotspot_places.length) {
+    const hp = data.top_hotspot_places.slice().sort((a,b) => a.hotspot_score - b.hotspot_score);
+    Plotly.newPlot('chartHotspotPlaces', [{
+      y: hp.map(p => p.Place.length > 25 ? p.Place.slice(0,24)+'…' : p.Place),
+      x: hp.map(p => p.hotspot_score),
+      type: 'bar', orientation: 'h',
+      marker: { color: PALETTE_GREEN },
+      text: hp.map(p => p.hotspot_score.toFixed(3)),
+      textposition: 'outside',
+    }], layout('Top 10 Hotspot Places', 380), cfg);
+  } else loading('chartHotspotPlaces', false);
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,202 @@
+{% extends "base.html" %}
+{% block title %}Prediction{% endblock %}
+{% block page_title %}Popularity Prediction{% endblock %}
+{% block breadcrumb %}ML Prediction{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>🤖 Popularity Prediction</h1>
+  <p>Random Forest Regressor trained on review-count, rating, and sentiment features to forecast tourist place popularity.</p>
+</div>
+
+<div class="info-box">
+  <strong>Model:</strong> Random Forest Regressor &nbsp;·&nbsp;
+  <strong>Target:</strong> log1p(review_count) &nbsp;·&nbsp;
+  <strong>Note:</strong> Date column is fully null — no temporal features used.
+</div>
+
+<!-- Model Assumptions -->
+<div class="chart-card">
+  <div class="chart-card-header">
+    <div class="chart-card-title"><span class="icon">📌</span> Model Assumptions & Design Decisions</div>
+  </div>
+  <div class="data-table-wrap">
+    <table class="data-table">
+      <thead><tr><th>Decision</th><th>Rationale</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Date column excluded</strong></td><td>100% null — no temporal signal possible</td></tr>
+        <tr><td><strong>Target = log1p(review_count)</strong></td><td>Proxy for popularity; log-scale reduces skew</td></tr>
+        <tr><td><strong>Random Forest chosen</strong></td><td>Handles non-linearity, outlier-robust, no scaling needed</td></tr>
+        <tr><td><strong>City-level features</strong></td><td>Spatial context since date unavailable</td></tr>
+        <tr><td><strong>Sentiment as feature</strong></td><td>Review quality correlates with organic growth</td></tr>
+        <tr><td><strong>Cross-validation (5-fold)</strong></td><td>Ensures generalisability without overfitting</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Metrics row -->
+<div class="metrics-row" id="metricsRow">
+  <div class="metric-card"><div class="metric-val" id="m-mae">—</div><div class="metric-lbl">Test MAE</div></div>
+  <div class="metric-card"><div class="metric-val" id="m-rmse">—</div><div class="metric-lbl">Test RMSE</div></div>
+  <div class="metric-card"><div class="metric-val" id="m-r2">—</div><div class="metric-lbl">Test R²</div></div>
+  <div class="metric-card"><div class="metric-val" id="m-cv">—</div><div class="metric-lbl">CV R² (mean)</div></div>
+</div>
+
+<!-- Row: Feature Importance + Donut -->
+<div class="row-2" id="fiRow">
+  <div class="chart-card">
+    <div class="chart-card-header">
+      <div class="chart-card-title"><span class="icon">📊</span> Feature Importances (Random Forest)</div>
+    </div>
+    <div id="chartFI" class="chart-container"></div>
+  </div>
+  <div class="chart-card">
+    <div class="chart-card-header">
+      <div class="chart-card-title"><span class="icon">🍩</span> Feature Importance Share</div>
+    </div>
+    <div id="chartFIPie" class="chart-container"></div>
+  </div>
+</div>
+
+<!-- Actual vs Predicted Scatter -->
+<div class="chart-card">
+  <div class="chart-card-header">
+    <div class="chart-card-title"><span class="icon">🎯</span> Actual vs Predicted Popularity (test set)</div>
+  </div>
+  <div id="chartScatter" class="chart-container"></div>
+</div>
+
+<!-- Residual Distribution -->
+<div class="chart-card">
+  <div class="chart-card-header">
+    <div class="chart-card-title"><span class="icon">📉</span> Residual Distribution</div>
+  </div>
+  <div id="chartResidual" class="chart-container-sm"></div>
+</div>
+
+<!-- Top Predicted Places -->
+<div class="chart-card" id="topPredCard">
+  <div class="chart-card-header">
+    <div class="chart-card-title"><span class="icon">🏅</span> Top 30 Predicted Popular Places</div>
+  </div>
+  <div id="chartTopPred" class="chart-container"></div>
+  <div class="divider"></div>
+  <div class="data-table-wrap">
+    <table class="data-table">
+      <thead>
+        <tr><th>#</th><th>Place</th><th>Actual Reviews</th><th>Predicted Reviews</th><th>Log Popularity</th></tr>
+      </thead>
+      <tbody id="topPredTable"></tbody>
+    </table>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+(async () => {
+  const data = await fetchJSON('/api/prediction-data');
+  if (!data) return;
+
+  const cfg = plotlyCfg();
+  const layout = plotlyLayout;
+
+  // Metrics
+  const m = data.metrics || {};
+  setText('m-mae',  m.test_mae  != null ? m.test_mae.toFixed(4)  : 'N/A');
+  setText('m-rmse', m.test_rmse != null ? m.test_rmse.toFixed(4) : 'N/A');
+  setText('m-r2',   m.test_r2   != null ? m.test_r2.toFixed(4)   : 'N/A');
+  if (m.cv_r2_mean != null) {
+    const std = m.cv_r2_std != null ? ` ± ${m.cv_r2_std.toFixed(4)}` : '';
+    setText('m-cv', m.cv_r2_mean.toFixed(4) + std);
+  }
+
+  // Feature Importances
+  if (data.feature_importances && data.feature_importances.length) {
+    const fi = data.feature_importances.sort((a,b) => a.importance - b.importance);
+    Plotly.newPlot('chartFI', [{
+      y: fi.map(f => f.feature),
+      x: fi.map(f => f.importance),
+      type: 'bar', orientation: 'h',
+      marker: { color: PALETTE_PURP },
+      text: fi.map(f => f.importance.toFixed(3)), textposition: 'outside',
+    }], layout('Feature Importances', 360, { yaxis_tickfont: 10 }), cfg);
+
+    Plotly.newPlot('chartFIPie', [{
+      labels: fi.map(f => f.feature),
+      values: fi.map(f => f.importance),
+      type: 'pie', hole: 0.5,
+      marker: { colors: ['#7c3aed','#2563eb','#059669','#d97706','#dc2626','#7c3aed'] },
+      textinfo: 'percent+label',
+    }], layout('Feature Share', 360), cfg);
+  } else {
+    ['chartFI','chartFIPie'].forEach(id => loading(id, false,
+      'feature_importances.csv not found — run prediction.py first.'));
+  }
+
+  // Actual vs Predicted Scatter
+  if (data.test_scatter && data.test_scatter.length) {
+    const ts = data.test_scatter;
+    const actCol = ts[0].actual_log_popularity !== undefined
+      ? 'actual_log_popularity' : 'actual_review_count';
+    const predCol = ts[0].predicted_log_popularity !== undefined
+      ? 'predicted_log_popularity' : 'predicted_review_count';
+
+    const actVals  = ts.map(r => r[actCol]);
+    const predVals = ts.map(r => r[predCol]);
+    const resids   = ts.map(r => r.residual || (r[actCol] - r[predCol]));
+
+    const mn = Math.min(...actVals), mx = Math.max(...actVals);
+
+    Plotly.newPlot('chartScatter', [
+      {
+        x: actVals, y: predVals,
+        mode: 'markers',
+        marker: {
+          color: resids, colorscale: 'RdBu', colorbar: { title: 'Residual', tickfont: { color: '#c0bce8' } },
+          opacity: 0.45, size: 5,
+        },
+        hovertemplate: 'Actual: %{x:.3f}<br>Predicted: %{y:.3f}<extra></extra>',
+      },
+      {
+        x: [mn, mx], y: [mn, mx],
+        mode: 'lines',
+        line: { color: '#a78bfa', dash: 'dash', width: 2 },
+        name: 'Perfect Prediction',
+      },
+    ], layout('Actual vs Predicted (test set sample)', 420), cfg);
+
+    // Residual histogram
+    Plotly.newPlot('chartResidual', [{
+      x: resids,
+      type: 'histogram', nbinsx: 50,
+      marker: { color: '#8b5cf6' },
+    }], layout('Residual Distribution', 280), cfg);
+  }
+
+  // Top Predicted Places
+  if (data.top_predicted && data.top_predicted.length) {
+    const tp = data.top_predicted;
+    Plotly.newPlot('chartTopPred', [{
+      y: tp.map(r => (r.Place || r.place || '?').slice(0,28)),
+      x: tp.map(r => r.predicted_review_count || r.predicted_log_popularity || 0),
+      type: 'bar', orientation: 'h',
+      marker: { color: PALETTE_GREEN },
+    }], layout('Top 30 Predicted Popular Places', 520, { yaxis_tickfont: 9 }), cfg);
+
+    document.getElementById('topPredTable').innerHTML = tp.map((r, i) => `<tr>
+      <td><span class="rank-badge">${i+1}</span></td>
+      <td>${r.Place || r.place || '—'}</td>
+      <td>${fmt(r.actual_review_count || r.review_count)}</td>
+      <td style="color:var(--accent-light);font-weight:600;">${fmt(Math.round(r.predicted_review_count || 0))}</td>
+      <td>${(r.predicted_log_popularity || 0).toFixed(4)}</td>
+    </tr>`).join('');
+  } else {
+    document.getElementById('topPredCard').querySelector('.data-table-wrap').innerHTML =
+      '<div class="warn-box" style="margin:12px 0;">No prediction data found. Run <code>python scripts/prediction.py</code> first.</div>';
+  }
+})();
+</script>
+{% endblock %}

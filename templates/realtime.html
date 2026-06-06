@@ -1,0 +1,182 @@
+{% extends "base.html" %}
+{% block title %}Real-Time Trends{% endblock %}
+{% block page_title %}Real-Time Trends{% endblock %}
+{% block breadcrumb %}Google Trends Integration{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>📡 Real-Time Tourism Trends</h1>
+  <p>Google Trends data blended with existing hotspot scores for live ranking intelligence.</p>
+</div>
+
+<div id="dataStatus"></div>
+
+<!-- KPI Row -->
+<div class="kpi-grid" id="rtKpiGrid" style="display:none;">
+  <div class="kpi-card">
+    <div class="kpi-icon">🥇</div>
+    <div class="kpi-body">
+      <div class="kpi-value" id="rt-kpi-1">—</div>
+      <div class="kpi-label">#1 Trending Destination</div>
+    </div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-icon">🥈</div>
+    <div class="kpi-body">
+      <div class="kpi-value" id="rt-kpi-2">—</div>
+      <div class="kpi-label">#2 Trending Destination</div>
+    </div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-icon">🥉</div>
+    <div class="kpi-body">
+      <div class="kpi-value" id="rt-kpi-3">—</div>
+      <div class="kpi-label">#3 Trending Destination</div>
+    </div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-icon">📈</div>
+    <div class="kpi-body">
+      <div class="kpi-value" id="rt-kpi-count">—</div>
+      <div class="kpi-label">Places Tracked</div>
+    </div>
+  </div>
+</div>
+
+<!-- Row 1: Trend Bar + Realtime Hotspot Bar -->
+<div class="row-2" id="rtChartRow1" style="display:none;">
+  <div class="chart-card">
+    <div class="chart-card-header">
+      <div class="chart-card-title"><span class="icon">📈</span> Google Trends Score (Normalised)</div>
+    </div>
+    <div id="chartTrendBar" class="chart-container"></div>
+  </div>
+  <div class="chart-card">
+    <div class="chart-card-header">
+      <div class="chart-card-title"><span class="icon">🏆</span> Top 10 Real-Time Hotspots</div>
+    </div>
+    <div id="chartRealtimeBar" class="chart-container"></div>
+  </div>
+</div>
+
+<!-- Removed Score Composition and Scatter Charts as per user request -->
+
+<!-- Full Table -->
+<div class="chart-card" id="rtTableCard" style="display:none;">
+  <div class="chart-card-header">
+    <div class="chart-card-title"><span class="icon">📋</span> Full Real-Time Leaderboard</div>
+  </div>
+  <div class="data-table-wrap">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Place</th>
+          <th>Base Popularity</th>
+          <th>Trend Score</th>
+          <th>Final Real-Time Score</th>
+          <th>Trend Level</th>
+        </tr>
+      </thead>
+      <tbody id="rtTableBody"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- How it works -->
+<div class="chart-card">
+  <div class="chart-card-header">
+    <div class="chart-card-title"><span class="icon">ℹ️</span> How Real-Time Trends Works</div>
+  </div>
+  <table class="data-table">
+    <thead><tr><th>Step</th><th>Detail</th></tr></thead>
+    <tbody>
+      <tr><td>1. Popularity Input</td><td>Top places by overall popularity (from <code>top_places.csv</code>)</td></tr>
+      <tr><td>2. Google Trends API</td><td>Fetches 3-month interest-over-time via <code>pytrends</code></td></tr>
+      <tr><td>3. Normalisation</td><td>Raw scores (0–100) → normalised to [0, 1]</td></tr>
+      <tr><td>4. Scoring</td><td><strong>FinalRealtimeScore = TrendScore</strong> (Entirely separate from hotspots)</td></tr>
+      <tr><td>5. Output files</td><td><code>google_trends.csv</code> + <code>realtime_hotspots.csv</code></td></tr>
+      <tr><td>6. Refresh data</td><td>Run: <code>python scripts/google_trends.py</code></td></tr>
+    </tbody>
+  </table>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+(async () => {
+  const data = await fetchJSON('/api/realtime-data');
+  if (!data) return;
+
+  const statusEl = document.getElementById('dataStatus');
+
+  if (!data.available || !data.google_trends || !data.google_trends.length) {
+    statusEl.innerHTML = `
+      <div class="warn-box">
+        ⚠️ No real-time trend data found.
+        Run <code>python scripts/google_trends.py</code> first, then refresh this page.<br>
+        <strong>Install:</strong> <code>pip install pytrends==4.9.2</code>
+      </div>`;
+    return;
+  }
+
+  // Show all panels
+  ['rtKpiGrid','rtChartRow1','rtTableCard']
+    .forEach(id => { const el = document.getElementById(id); if (el) el.style.display=''; });
+
+  const gt = data.google_trends.sort((a,b) => b.TrendScore - a.TrendScore);
+  const rt = data.realtime_hotspots
+    ? data.realtime_hotspots.sort((a,b) => b.FinalRealtimeScore - a.FinalRealtimeScore)
+    : [];
+
+  // KPIs
+  setText('rt-kpi-1', gt[0]?.Place || '—');
+  setText('rt-kpi-2', gt[1]?.Place || '—');
+  setText('rt-kpi-3', gt[2]?.Place || '—');
+  setText('rt-kpi-count', gt.length);
+
+  const cfg = plotlyCfg();
+  const layout = plotlyLayout;
+
+  // Trend bar
+  const gtSorted = gt.slice().sort((a,b) => a.TrendScore - b.TrendScore);
+  Plotly.newPlot('chartTrendBar', [{
+    y: gtSorted.map(r => r.Place.slice(0,28)),
+    x: gtSorted.map(r => r.TrendScore),
+    type: 'bar', orientation: 'h',
+    marker: { color: gtSorted.map(r => r.TrendScore), colorscale: 'Purples', showscale: false },
+    text: gtSorted.map(r => r.TrendScore.toFixed(3)), textposition: 'outside',
+  }], layout('Google Trends Score', 420, { yaxis_tickfont: 9 }), cfg);
+
+  // Real-time hotspot bar (top 10)
+  if (rt.length) {
+    const top10 = rt.slice(0, 10).slice().sort((a,b) => a.FinalRealtimeScore - b.FinalRealtimeScore);
+    Plotly.newPlot('chartRealtimeBar', [{
+      y: top10.map(r => r.Place.slice(0,28)),
+      x: top10.map(r => r.FinalRealtimeScore),
+      type: 'bar', orientation: 'h',
+      marker: { color: PALETTE_TEAL },
+      text: top10.map(r => r.FinalRealtimeScore.toFixed(3)), textposition: 'outside',
+    }], layout('Top 10 Real-Time Hotspots', 420, { yaxis_tickfont: 9 }), cfg);
+
+    // Composition & Scatter charts removed to separate Real-Time Trends from Hotspots
+
+    // Table
+    document.getElementById('rtTableBody').innerHTML = rt.map((r, i) => {
+      const ts = r.TrendScore || 0;
+      const pillClass = ts > 0.66 ? 'trend-high' : ts > 0.33 ? 'trend-med' : 'trend-low';
+      const pillLabel = ts > 0.66 ? '🔥 High' : ts > 0.33 ? '⚡ Medium' : '📉 Low';
+      return `<tr>
+        <td><span class="rank-badge ${i<3?['gold','silver','bronze'][i]:''}">${i+1}</span></td>
+        <td><strong>${r.Place}</strong></td>
+        <td>${(r.BasePopularity||0).toFixed(4)}</td>
+        <td>${ts.toFixed(4)}</td>
+        <td><strong style="color:var(--accent-light)">${(r.FinalRealtimeScore||0).toFixed(4)}</strong></td>
+        <td><span class="trend-pill ${pillClass}">${pillLabel}</span></td>
+      </tr>`;
+    }).join('');
+  }
+})();
+</script>
+{% endblock %}

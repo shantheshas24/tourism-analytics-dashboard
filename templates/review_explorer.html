@@ -1,0 +1,374 @@
+{% extends "base.html" %}
+{% block title %}Review Explorer{% endblock %}
+{% block page_title %}Review Explorer{% endblock %}
+{% block breadcrumb %}Analytics Tools › Review Explorer{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>💬 Review Explorer</h1>
+  <p>Interactively explore reviews, filter by city / place / sentiment / rating / keyword, and analyse aspect signals — fast on 1.4M+ rows via smart sampling.</p>
+</div>
+
+<div class="info-box">
+  <strong>Dataset:</strong> Searches a 100K-row representative sample. Aspect analysis uses keyword matching across 8 categories.
+  Results load instantly without reprocessing the full dataset.
+</div>
+
+<!-- ── Filters ─────────────────────────────────────────────────────────────── -->
+<div class="chart-card" style="margin-bottom:22px;">
+  <div class="chart-card-header">
+    <div class="chart-card-title"><span class="icon">🔎</span> Filter Reviews</div>
+    <button class="run-badge" style="cursor:pointer;" onclick="runSearch()">▶ Search</button>
+  </div>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr 1fr auto;gap:16px;align-items:end;flex-wrap:wrap;">
+
+    <!-- City -->
+    <div>
+      <label class="re-label">🏙️ City</label>
+      <select id="reCity" class="re-select" onchange="filterPlaces()">
+        <option value="">All Cities</option>
+      </select>
+    </div>
+
+    <!-- Place -->
+    <div>
+      <label class="re-label">📍 Place</label>
+      <select id="rePlace" class="re-select">
+        <option value="">All Places</option>
+      </select>
+    </div>
+
+    <!-- Sentiment -->
+    <div>
+      <label class="re-label">💬 Sentiment</label>
+      <select id="reSentiment" class="re-select">
+        <option value="">All</option>
+        <option value="Positive">✅ Positive</option>
+        <option value="Negative">❌ Negative</option>
+        <option value="Neutral">➖ Neutral</option>
+      </select>
+    </div>
+
+    <!-- Min Rating -->
+    <div>
+      <label class="re-label">⭐ Min Rating</label>
+      <select id="reRating" class="re-select">
+        <option value="">Any</option>
+        <option value="1">1+</option>
+        <option value="2">2+</option>
+        <option value="3">3+</option>
+        <option value="4">4+</option>
+        <option value="5">5 only</option>
+      </select>
+    </div>
+
+    <!-- Keyword -->
+    <div>
+      <label class="re-label">🔑 Keyword</label>
+      <input id="reKeyword" type="text" placeholder="e.g. clean, beautiful…"
+             class="re-input"
+             onkeydown="if(event.key==='Enter') runSearch()"/>
+    </div>
+
+    <!-- Limit -->
+    <div>
+      <label class="re-label">Show</label>
+      <select id="reLimit" class="re-select">
+        <option value="25">25</option>
+        <option value="50" selected>50</option>
+        <option value="100">100</option>
+        <option value="200">200</option>
+      </select>
+    </div>
+  </div>
+
+  <div style="margin-top:12px;display:flex;gap:8px;">
+    <button class="theme-toggle-btn" onclick="clearFilters()" style="opacity:.7;">✕ Clear Filters</button>
+    <span id="searchStatus" style="font-size:.78rem;color:var(--text-muted);line-height:36px;"></span>
+  </div>
+</div>
+
+<!-- ── Summary Cards ─────────────────────────────────────────────────────── -->
+<div id="summaryRow" class="kpi-grid" style="grid-template-columns:repeat(4,1fr);display:none;margin-bottom:20px;">
+  <div class="kpi-card">
+    <div class="kpi-icon">📋</div>
+    <div class="kpi-body"><div class="kpi-value" id="sum-count">—</div><div class="kpi-label">Reviews Matched</div></div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-icon">⭐</div>
+    <div class="kpi-body"><div class="kpi-value" id="sum-rating">—</div><div class="kpi-label">Avg Rating</div></div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-icon">💬</div>
+    <div class="kpi-body"><div class="kpi-value" id="sum-polarity">—</div><div class="kpi-label">Avg Sentiment</div></div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-icon">🏷️</div>
+    <div class="kpi-body"><div class="kpi-value" id="sum-aspect">—</div><div class="kpi-label">Top Aspect</div></div>
+  </div>
+</div>
+
+<!-- ── Aspect Analysis Charts ─────────────────────────────────────────────── -->
+<div class="row-2" id="aspectSection" style="display:none;">
+  <div class="chart-card">
+    <div class="chart-card-header">
+      <div class="chart-card-title"><span class="icon">🏷️</span> Aspect Mention Count</div>
+    </div>
+    <div id="chartAspectCount" class="chart-container"></div>
+  </div>
+  <div class="chart-card">
+    <div class="chart-card-header">
+      <div class="chart-card-title"><span class="icon">⭐</span> Avg Rating per Aspect</div>
+    </div>
+    <div id="chartAspectRating" class="chart-container"></div>
+  </div>
+</div>
+
+<!-- ── Review Cards ─────────────────────────────────────────────────────────── -->
+<div class="chart-card" id="reviewSection" style="display:none;">
+  <div class="chart-card-header">
+    <div class="chart-card-title"><span class="icon">📄</span> Review Results</div>
+    <span id="reviewCountLabel" style="font-size:.78rem;color:var(--text-muted);"></span>
+  </div>
+  <div id="reviewList"></div>
+</div>
+
+<style>
+  .re-label {
+    display:block;font-size:.78rem;color:var(--text-muted);
+    margin-bottom:6px;font-weight:500;
+  }
+  .re-select, .re-input {
+    width:100%;background:var(--bg-card);border:1px solid var(--border);
+    color:var(--text-primary);border-radius:8px;padding:8px 12px;
+    font-size:.84rem;font-family:'Inter',sans-serif;outline:none;
+    transition:border-color var(--transition);
+  }
+  .re-select:focus, .re-input:focus { border-color:var(--border-hov); }
+  .review-card {
+    background:rgba(255,255,255,0.03);border:1px solid var(--border);
+    border-radius:10px;padding:14px 18px;margin-bottom:10px;
+    transition:all var(--transition);
+  }
+  .review-card:hover { border-color:var(--border-hov);background:rgba(255,255,255,0.05); }
+  .review-meta { display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:8px; }
+  .review-tag {
+    font-size:.72rem;font-weight:600;padding:2px 8px;border-radius:12px;
+    background:rgba(124,58,237,.2);color:#c4b5fd;
+  }
+  .review-tag.city { background:rgba(37,99,235,.2);color:#93c5fd; }
+  .review-tag.place { background:rgba(5,150,105,.2);color:#6ee7b7; }
+  .review-tag.pos { background:rgba(52,211,153,.15);color:#34d399; }
+  .review-tag.neg { background:rgba(248,113,113,.15);color:#f87171; }
+  .review-tag.neu { background:rgba(96,165,250,.15);color:#60a5fa; }
+  .review-text { font-size:.84rem;color:var(--text-primary);line-height:1.65; }
+  .review-stars { color:#fbbf24;font-size:.85rem;font-weight:700; }
+  .aspect-pill {
+    display:inline-flex;align-items:center;gap:5px;
+    padding:4px 12px;border-radius:20px;font-size:.73rem;font-weight:600;
+    background:rgba(124,58,237,.15);color:#a78bfa;margin:2px;
+  }
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+'use strict';
+
+let _allCities = [];
+let _allPlaces = [];
+let _lastResults = null;
+
+const ASPECT_ICONS = {
+  cleanliness:'🧹', crowd:'👥', food:'🍽️', price:'💰',
+  safety:'🛡️', family:'👨‍👩‍👧', scenery:'🏞️', transport:'🚌',
+};
+
+// ── Load meta on init ─────────────────────────────────────────────────────────
+(async function initMeta() {
+  document.getElementById('searchStatus').textContent = 'Loading city/place lists…';
+  const meta = await fetchJSON('/api/review-meta');
+  if (!meta) {
+    document.getElementById('searchStatus').textContent = '⚠️ Could not load filter options.';
+    return;
+  }
+  _allCities = meta.cities || [];
+  _allPlaces = meta.places || [];
+
+  const citySelect = document.getElementById('reCity');
+  _allCities.forEach(c => {
+    const opt = document.createElement('option');
+    opt.value = c; opt.textContent = c;
+    citySelect.appendChild(opt);
+  });
+
+  populatePlaces(_allPlaces);
+  document.getElementById('searchStatus').textContent =
+    `${fmt(_allCities.length)} cities · ${fmt(_allPlaces.length)} places ready`;
+})();
+
+function populatePlaces(places) {
+  const sel = document.getElementById('rePlace');
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">All Places</option>';
+  places.forEach(p => {
+    const opt = document.createElement('option');
+    opt.value = p; opt.textContent = p;
+    sel.appendChild(opt);
+  });
+  if (cur && places.includes(cur)) sel.value = cur;
+}
+
+function filterPlaces() {
+  const city = document.getElementById('reCity').value;
+  if (!city) { populatePlaces(_allPlaces); return; }
+  // Client-side filtering isn't possible without the mapping,
+  // so just show all places (server will handle the city filter).
+  populatePlaces(_allPlaces);
+}
+
+function clearFilters() {
+  document.getElementById('reCity').value      = '';
+  document.getElementById('rePlace').value     = '';
+  document.getElementById('reSentiment').value = '';
+  document.getElementById('reRating').value    = '';
+  document.getElementById('reKeyword').value   = '';
+  filterPlaces();
+}
+
+// ── Search ────────────────────────────────────────────────────────────────────
+async function runSearch() {
+  const city      = document.getElementById('reCity').value;
+  const place     = document.getElementById('rePlace').value;
+  const sentiment = document.getElementById('reSentiment').value;
+  const rating    = document.getElementById('reRating').value;
+  const keyword   = document.getElementById('reKeyword').value.trim();
+  const limit     = document.getElementById('reLimit').value;
+
+  document.getElementById('searchStatus').textContent = '⏳ Searching…';
+  document.getElementById('summaryRow').style.display   = 'none';
+  document.getElementById('aspectSection').style.display= 'none';
+  document.getElementById('reviewSection').style.display= 'none';
+
+  const params = new URLSearchParams({ limit });
+  if (city)      params.set('city',      city);
+  if (place)     params.set('place',     place);
+  if (sentiment) params.set('sentiment', sentiment);
+  if (rating)    params.set('rating',    rating);
+  if (keyword)   params.set('keyword',   keyword);
+
+  const data = await fetchJSON('/api/review-search?' + params.toString());
+  if (!data || data.error) {
+    document.getElementById('searchStatus').textContent = '⚠️ ' + (data ? data.error : 'Request failed.');
+    return;
+  }
+
+  _lastResults = data;
+  renderSummary(data.summary);
+  renderAspects(data.aspects);
+  renderReviews(data.reviews, data.total_matched, limit);
+
+  document.getElementById('searchStatus').textContent =
+    `Found ${fmt(data.total_matched)} match${data.total_matched !== 1 ? 'es' : ''} — showing ${data.reviews.length}`;
+}
+
+// ── Summary cards ─────────────────────────────────────────────────────────────
+function renderSummary(s) {
+  if (!s) return;
+  const aspectLabel = s.top_aspect
+    ? (ASPECT_ICONS[s.top_aspect] || '') + ' ' + s.top_aspect
+    : '—';
+  setText('sum-count',    fmt(s.count) || '—');
+  setText('sum-rating',   s.avg_rating   != null ? '⭐ ' + s.avg_rating.toFixed(2)  : '—');
+  setText('sum-polarity', s.avg_polarity != null ? s.avg_polarity.toFixed(4)        : '—');
+  setText('sum-aspect',   aspectLabel);
+  document.getElementById('summaryRow').style.display = 'grid';
+}
+
+// ── Aspect charts ─────────────────────────────────────────────────────────────
+function renderAspects(aspects) {
+  if (!aspects) return;
+  const labels  = Object.keys(aspects).map(a => (ASPECT_ICONS[a]||'') + ' ' + a);
+  const counts  = Object.values(aspects).map(v => v.mentions);
+  const ratings = Object.values(aspects).map(v => v.avg_rating || 0);
+
+  const cfg = plotlyCfg();
+  const colorArr = ['#7c3aed','#2563eb','#059669','#d97706','#dc2626','#7c3aed','#0891b2','#65a30d'];
+
+  Plotly.react('chartAspectCount', [{
+    x: labels,
+    y: counts,
+    type: 'bar',
+    marker: { color: colorArr },
+    text: counts,
+    textposition: 'outside',
+    hovertemplate: '<b>%{x}</b><br>Mentions: %{y}<extra></extra>',
+  }], {
+    ...plotlyLayout('Mention Count by Aspect', 300, { xaxis_tickfont: 10 }),
+    margin: { l: 40, r: 20, t: 40, b: 80 },
+  }, cfg);
+
+  Plotly.react('chartAspectRating', [{
+    x: labels,
+    y: ratings,
+    type: 'bar',
+    marker: {
+      color: ratings.map(r => r >= 4 ? '#34d399' : r >= 3 ? '#fbbf24' : '#f87171'),
+    },
+    text: ratings.map(r => r ? r.toFixed(2) : 'N/A'),
+    textposition: 'outside',
+    hovertemplate: '<b>%{x}</b><br>Avg Rating: %{y:.2f}<extra></extra>',
+  }], {
+    ...plotlyLayout('Avg Rating by Aspect', 300, { xaxis_tickfont: 10, yaxis_range: [0, 5.5] }),
+    margin: { l: 40, r: 20, t: 40, b: 80 },
+  }, cfg);
+
+  document.getElementById('aspectSection').style.display = 'grid';
+}
+
+// ── Review cards ──────────────────────────────────────────────────────────────
+function renderReviews(reviews, total, limit) {
+  const section = document.getElementById('reviewSection');
+  const list    = document.getElementById('reviewList');
+  const label   = document.getElementById('reviewCountLabel');
+
+  if (!reviews || !reviews.length) {
+    list.innerHTML = `<div class="warn-box" style="margin:0;">
+      No reviews matched your filters. Try broadening the search.
+    </div>`;
+    label.textContent = '';
+    section.style.display = 'block';
+    return;
+  }
+
+  label.textContent = `Showing ${reviews.length} of ${fmt(total)}`;
+
+  list.innerHTML = reviews.map(r => {
+    const rating = r.Rating != null ? Math.round(r.Rating) : null;
+    const stars  = rating != null ? '★'.repeat(rating) + '☆'.repeat(5 - rating) : '';
+    const sentCls = r.sentiment === 'Positive' ? 'pos'
+                  : r.sentiment === 'Negative' ? 'neg' : 'neu';
+    const sentLabel = r.sentiment || 'Unknown';
+    const polarity  = r.polarity  != null ? ` · Polarity: ${r.polarity.toFixed(3)}` : '';
+    const reviewTxt = (r.Review || '').trim() || '<em style="color:var(--text-muted);">No review text available.</em>';
+
+    return `<div class="review-card">
+      <div class="review-meta">
+        <span class="review-tag city">${r.City || '—'}</span>
+        <span class="review-tag place">${r.Place || '—'}</span>
+        ${rating != null ? `<span class="review-stars">${stars}</span><span style="font-size:.78rem;color:var(--text-muted);">${rating}/5</span>` : ''}
+        <span class="review-tag ${sentCls}">${sentLabel}${polarity}</span>
+      </div>
+      <div class="review-text">${escapeHtml(reviewTxt)}</div>
+    </div>`;
+  }).join('');
+
+  section.style.display = 'block';
+}
+
+function escapeHtml(str) {
+  return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+</script>
+{% endblock %}

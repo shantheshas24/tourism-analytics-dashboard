@@ -1,0 +1,500 @@
+{% extends "base.html" %}
+{% block title %}Destination Compare{% endblock %}
+{% block page_title %}Destination Compare{% endblock %}
+{% block breadcrumb %}Analytics Tools › Compare{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>🔍 Destination Compare &amp; Recommender</h1>
+  <p>Select 2–4 destinations to compare metrics side-by-side, then discover similar places using feature-based similarity.</p>
+</div>
+
+<!-- ── Controls ──────────────────────────────────────────────────────────────── -->
+<div class="chart-card" id="controlsCard">
+  <div class="chart-card-header">
+    <div class="chart-card-title"><span class="icon">🎛️</span> Selection Controls</div>
+    <div style="display:flex;gap:8px;">
+      <button class="theme-toggle-btn" id="cmpBtnPlaces" onclick="cmpSwitchMode('places')">📍 Places</button>
+      <button class="theme-toggle-btn" id="cmpBtnCities" onclick="cmpSwitchMode('cities')" style="opacity:.55;">🏙️ Cities</button>
+    </div>
+  </div>
+
+  <!-- Search + tag box -->
+  <div style="position:relative;margin-bottom:12px;">
+    <div id="tagBox" style="
+        display:flex;flex-wrap:wrap;gap:6px;align-items:center;
+        background:var(--bg-app);border:1px solid var(--border);
+        border-radius:10px;padding:8px 12px;min-height:46px;cursor:text;"
+        onclick="document.getElementById('searchInput').focus()">
+      <!-- Tags injected here -->
+      <input id="searchInput" type="text" placeholder="Type to search destinations…"
+             autocomplete="off"
+             style="border:none;background:transparent;outline:none;color:var(--text-primary);
+                    font-size:.84rem;flex:1;min-width:160px;"
+             oninput="onSearchInput(this.value)"
+             onkeydown="onSearchKey(event)"/>
+    </div>
+    <!-- Dropdown -->
+    <div id="searchDropdown" style="
+        display:none;position:absolute;top:100%;left:0;right:0;z-index:500;
+        background:var(--bg-surface);border:1px solid var(--border);
+        border-radius:10px;max-height:260px;overflow-y:auto;
+        box-shadow:0 8px 32px rgba(0,0,0,0.4);margin-top:4px;">
+    </div>
+  </div>
+  <div style="font-size:.75rem;color:var(--text-muted);">
+    Select <strong style="color:var(--accent-light);">2–4</strong> destinations to compare.
+    <span id="selCount" style="margin-left:8px;color:#fbbf24;font-weight:600;"></span>
+  </div>
+
+  <div style="margin-top:14px;display:flex;gap:10px;">
+    <button id="btnRunCompare" class="run-badge" style="cursor:pointer;"
+            onclick="runCompare()">▶ Compare</button>
+    <button id="btnClearSel" class="theme-toggle-btn"
+            onclick="clearSelection()" style="opacity:.7;">✕ Clear</button>
+  </div>
+</div>
+
+<!-- ── Metric Cards ───────────────────────────────────────────────────────────── -->
+<div id="metricCardsRow" class="metrics-row" style="display:none;"></div>
+
+<!-- ── Charts row ────────────────────────────────────────────────────────────── -->
+<div class="row-2" id="compareChartsRow" style="display:none;">
+  <div class="chart-card">
+    <div class="chart-card-header">
+      <div class="chart-card-title"><span class="icon">🕸️</span> Radar — Normalised Metrics</div>
+    </div>
+    <div id="chartCmpRadar" class="chart-container-lg"></div>
+  </div>
+  <div class="chart-card">
+    <div class="chart-card-header">
+      <div class="chart-card-title"><span class="icon">📊</span> Grouped Bar — Raw Metrics</div>
+    </div>
+    <div id="chartCmpBar" class="chart-container-lg"></div>
+  </div>
+</div>
+
+<!-- ── Similar Destination Recommender (Places only) ─────────────────────────── -->
+<div class="chart-card" id="similarSection" style="display:none;margin-top:0;">
+  <div class="chart-card-header">
+    <div class="chart-card-title"><span class="icon">🧭</span> Similar Places Recommender</div>
+  </div>
+
+  <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap;">
+    <label style="font-size:.82rem;color:var(--text-muted);">Seed place:</label>
+    <select id="seedSelect"
+            style="background:var(--bg-card);border:1px solid var(--border);color:var(--text-primary);
+                   border-radius:8px;padding:7px 14px;font-size:.84rem;">
+    </select>
+    <label style="font-size:.82rem;color:var(--text-muted);">Top N:</label>
+    <select id="simN"
+            style="background:var(--bg-card);border:1px solid var(--border);color:var(--text-primary);
+                   border-radius:8px;padding:7px 14px;font-size:.84rem;">
+      <option value="8">8</option>
+      <option value="10" selected>10</option>
+      <option value="15">15</option>
+      <option value="20">20</option>
+    </select>
+    <button class="run-badge" style="cursor:pointer;" onclick="runSimilar()">🔍 Find Similar</button>
+  </div>
+
+  <div class="row-2">
+    <div>
+      <div id="chartSimilarBar" class="chart-container"></div>
+    </div>
+    <div>
+      <div class="data-table-wrap" style="max-height:340px;overflow-y:auto;">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>#</th><th>Place</th><th>Similarity</th>
+              <th>Rating</th><th>Reviews</th><th>Sentiment</th><th>Hotspot</th>
+            </tr>
+          </thead>
+          <tbody id="similarTableBody">
+            <tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:20px;">
+              Select a seed place and click Find Similar.
+            </td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+  .dest-tag {
+    display:inline-flex;align-items:center;gap:6px;
+    background:linear-gradient(135deg,rgba(124,58,237,.3),rgba(76,29,149,.25));
+    border:1px solid rgba(167,139,250,.3);
+    border-radius:20px;padding:3px 10px;
+    font-size:.78rem;color:#c4b5fd;font-weight:500;
+    animation:fadeIn .2s ease;
+  }
+  .dest-tag button {
+    background:none;border:none;cursor:pointer;
+    color:rgba(255,255,255,.5);font-size:.9rem;line-height:1;padding:0;
+    transition:color .15s;
+  }
+  .dest-tag button:hover { color:#f87171; }
+  .drop-item {
+    padding:9px 14px;font-size:.84rem;cursor:pointer;
+    color:var(--text-primary);border-bottom:1px solid var(--border);
+    transition:background .15s;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  }
+  .drop-item:last-child { border-bottom:none; }
+  .drop-item:hover { background:rgba(124,58,237,.15); }
+  .drop-item.selected { color:#a78bfa;font-weight:600; }
+  .cmp-metric-label { font-size:.68rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:.07em; }
+  .cmp-metric-val   { font-size:1.05rem;font-weight:700;color:var(--accent-light);margin:2px 0; }
+  .cmp-dest-card {
+    background:var(--bg-card);border:1px solid var(--border);border-radius:12px;
+    padding:14px 16px;transition:all var(--transition);
+  }
+  .cmp-dest-card:hover { border-color:var(--border-hov);transform:translateY(-2px); }
+  .cmp-dest-name { font-size:.9rem;font-weight:700;color:var(--text-primary);margin-bottom:10px;
+                   border-bottom:1px solid var(--border);padding-bottom:6px; }
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+'use strict';
+
+// ────────────────────────────────────────────────────────────────────────────
+// State
+// ────────────────────────────────────────────────────────────────────────────
+let _cmpMode      = 'places';     // 'places' | 'cities'
+let _cmpAllData   = [];           // full dataset
+let _cmpAllNames  = [];           // sorted name list
+let _cmpSelected  = new Set();    // selected destination names
+
+const CMP_COLORS = ['#7c3aed','#2563eb','#059669','#d97706'];
+const METRICS = [
+  { key: 'avg_rating',    label: 'Rating',    fmt: v => v.toFixed(2) },
+  { key: 'review_count',  label: 'Reviews',   fmt: v => fmt(v) },
+  { key: 'avg_polarity',  label: 'Sentiment', fmt: v => v.toFixed(3) },
+  { key: 'hotspot_score', label: 'Hotspot',   fmt: v => v.toFixed(3) },
+];
+
+// ────────────────────────────────────────────────────────────────────────────
+// Init & mode switch
+// ────────────────────────────────────────────────────────────────────────────
+async function cmpLoad(mode) {
+  const data = await fetchJSON(`/api/compare-data?mode=${mode}`);
+  if (!data || data.error) {
+    _cmpAllData = []; _cmpAllNames = [];
+    console.warn('[Compare]', data && data.error);
+    return;
+  }
+  _cmpAllData  = data.data  || [];
+  _cmpAllNames = data.names || [];
+}
+
+function cmpSwitchMode(mode) {
+  _cmpMode = mode;
+  document.getElementById('cmpBtnPlaces').style.opacity = mode === 'places' ? '1' : '.55';
+  document.getElementById('cmpBtnCities').style.opacity = mode === 'cities' ? '1' : '.55';
+  clearSelection();
+  cmpLoad(mode);
+  // Hide similar section if switching to cities
+  document.getElementById('similarSection').style.display =
+    mode === 'places' ? '' : 'none';
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Search & tags
+// ────────────────────────────────────────────────────────────────────────────
+function onSearchInput(q) {
+  const dd = document.getElementById('searchDropdown');
+  if (!q.trim()) { dd.style.display = 'none'; return; }
+  const matches = _cmpAllNames
+    .filter(n => n.toLowerCase().includes(q.toLowerCase()))
+    .slice(0, 40);
+  if (!matches.length) { dd.style.display = 'none'; return; }
+  dd.innerHTML = matches.map(n => {
+    const sel = _cmpSelected.has(n) ? ' selected' : '';
+    return `<div class="drop-item${sel}" onclick="toggleDest('${n.replace(/'/g,"\\'")}')">
+      ${_cmpSelected.has(n) ? '✔ ' : ''}${n}
+    </div>`;
+  }).join('');
+  dd.style.display = 'block';
+}
+
+function onSearchKey(e) {
+  if (e.key === 'Escape') {
+    document.getElementById('searchDropdown').style.display = 'none';
+  }
+}
+
+// Close dropdown when clicking outside
+document.addEventListener('click', e => {
+  const dd = document.getElementById('searchDropdown');
+  if (!document.getElementById('tagBox').contains(e.target) &&
+      !dd.contains(e.target)) {
+    dd.style.display = 'none';
+  }
+});
+
+function toggleDest(name) {
+  if (_cmpSelected.has(name)) {
+    _cmpSelected.delete(name);
+  } else {
+    if (_cmpSelected.size >= 4) {
+      alert('You can compare up to 4 destinations at a time.');
+      return;
+    }
+    _cmpSelected.add(name);
+  }
+  renderTags();
+  // Refresh dropdown to update checkmarks
+  const q = document.getElementById('searchInput').value;
+  if (q) onSearchInput(q);
+}
+
+function renderTags() {
+  // Remove old tags (keep the input)
+  const box   = document.getElementById('tagBox');
+  const input = document.getElementById('searchInput');
+  // clear all children except the input
+  Array.from(box.children).forEach(c => { if (c !== input) c.remove(); });
+  // Insert tags before input
+  [..._cmpSelected].forEach(name => {
+    const tag = document.createElement('div');
+    tag.className = 'dest-tag';
+    tag.innerHTML = `<span>${name}</span><button onclick="toggleDest('${name.replace(/'/g,"\\'")}')">×</button>`;
+    box.insertBefore(tag, input);
+  });
+  const n = _cmpSelected.size;
+  document.getElementById('selCount').textContent =
+    n ? `${n} selected${n < 2 ? ' (need at least 2)' : ''}` : '';
+}
+
+function clearSelection() {
+  _cmpSelected.clear();
+  renderTags();
+  document.getElementById('searchInput').value = '';
+  document.getElementById('searchDropdown').style.display = 'none';
+  document.getElementById('metricCardsRow').style.display   = 'none';
+  document.getElementById('compareChartsRow').style.display = 'none';
+  document.getElementById('similarSection').style.display   = 'none';
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Run Compare
+// ────────────────────────────────────────────────────────────────────────────
+function runCompare() {
+  if (_cmpSelected.size < 2) { alert('Please select at least 2 destinations.'); return; }
+
+  const nameKey = _cmpMode === 'places' ? 'Place' : 'City';
+  const chosen  = _cmpAllData.filter(r => _cmpSelected.has(r[nameKey]));
+
+  if (chosen.length < 2) {
+    alert('Some selected destinations were not found in the data.');
+    return;
+  }
+
+  renderMetricCards(chosen, nameKey);
+  renderRadarChart(chosen, nameKey);
+  renderGroupedBar(chosen, nameKey);
+
+  document.getElementById('metricCardsRow').style.display   = 'grid';
+  document.getElementById('compareChartsRow').style.display = 'grid';
+
+  // Show similar section only for places
+  if (_cmpMode === 'places') {
+    populateSeedSelect(chosen, nameKey);
+    document.getElementById('similarSection').style.display = 'block';
+  }
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Metric Cards
+// ────────────────────────────────────────────────────────────────────────────
+function renderMetricCards(rows, nameKey) {
+  const container = document.getElementById('metricCardsRow');
+  container.innerHTML = rows.map((r, i) => {
+    const color = CMP_COLORS[i % CMP_COLORS.length];
+    return `<div class="cmp-dest-card" style="border-top:3px solid ${color};">
+      <div class="cmp-dest-name">${r[nameKey]}</div>
+      ${METRICS.map(m => `
+        <div style="display:flex;justify-content:space-between;margin-bottom:5px;">
+          <span class="cmp-metric-label">${m.label}</span>
+          <span class="cmp-metric-val" style="color:${color};">${r[m.key] != null ? m.fmt(r[m.key]) : '—'}</span>
+        </div>`).join('')}
+    </div>`;
+  }).join('');
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Radar Chart
+// ────────────────────────────────────────────────────────────────────────────
+function renderRadarChart(rows, nameKey) {
+  // Normalise each metric globally across all chosen rows
+  function normalise(vals) {
+    const mn = Math.min(...vals), mx = Math.max(...vals);
+    return mx > mn ? vals.map(v => (v - mn) / (mx - mn)) : vals.map(() => 0.5);
+  }
+
+  const radarDims = [
+    { key: 'avg_rating',    label: 'Rating'    },
+    { key: 'review_count',  label: 'Volume'    },
+    { key: 'avg_polarity',  label: 'Sentiment' },
+    { key: 'hotspot_score', label: 'Hotspot'   },
+  ].filter(d => rows.every(r => r[d.key] != null));
+
+  const normCols = {};
+  radarDims.forEach(d => {
+    normCols[d.key] = normalise(rows.map(r => +r[d.key] || 0));
+  });
+
+  const traces = rows.map((r, i) => {
+    const vals = radarDims.map(d => normCols[d.key][i]);
+    const labels = radarDims.map(d => d.label);
+    return {
+      type: 'scatterpolar',
+      r:     [...vals, vals[0]],
+      theta: [...labels, labels[0]],
+      fill: 'toself', opacity: 0.65,
+      name: (r[nameKey] || '').slice(0, 20),
+      line: { color: CMP_COLORS[i % CMP_COLORS.length] },
+      fillcolor: CMP_COLORS[i % CMP_COLORS.length].replace('#','') !== '' ?
+        hexToRgba(CMP_COLORS[i % CMP_COLORS.length], 0.18) : 'rgba(124,58,237,0.15)',
+    };
+  });
+
+  Plotly.react('chartCmpRadar', traces, {
+    ...plotlyLayout('Normalised Metric Comparison', 400),
+    polar: {
+      bgcolor: 'rgba(255,255,255,0.02)',
+      radialaxis: {
+        visible: true, range: [0, 1],
+        gridcolor: 'rgba(255,255,255,0.1)',
+        tickfont: { color: '#9090b8', size: 9 },
+      },
+      angularaxis: {
+        gridcolor: 'rgba(255,255,255,0.1)',
+        tickfont:  { color: '#c0bce8', size: 10 },
+      },
+    },
+    margin: { l: 60, r: 60, t: 50, b: 40 },
+  }, plotlyCfg());
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Grouped Bar Chart
+// ────────────────────────────────────────────────────────────────────────────
+function renderGroupedBar(rows, nameKey) {
+  const metricDefs = [
+    { key: 'avg_rating',    label: 'Avg Rating'    },
+    { key: 'hotspot_score', label: 'Hotspot Score' },
+    { key: 'avg_polarity',  label: 'Sentiment'     },
+  ];
+
+  const traces = rows.map((r, i) => ({
+    name:  (r[nameKey] || '').slice(0, 20),
+    x:     metricDefs.map(m => m.label),
+    y:     metricDefs.map(m => +(r[m.key] || 0)),
+    type:  'bar',
+    marker:{ color: CMP_COLORS[i % CMP_COLORS.length] },
+    hovertemplate: '<b>%{x}</b><br>%{y:.4f}<extra>' + (r[nameKey] || '') + '</extra>',
+  }));
+
+  Plotly.react('chartCmpBar', traces, {
+    ...plotlyLayout('Raw Metric Comparison', 400, { xaxis_tickfont: 11 }),
+    barmode: 'group',
+    margin:  { l: 50, r: 30, t: 50, b: 60 },
+  }, plotlyCfg());
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Similar Places
+// ────────────────────────────────────────────────────────────────────────────
+function populateSeedSelect(rows, nameKey) {
+  const sel = document.getElementById('seedSelect');
+  sel.innerHTML = rows.map(r =>
+    `<option value="${(r[nameKey]||'').replace(/"/g,'&quot;')}">${r[nameKey]}</option>`
+  ).join('');
+}
+
+async function runSimilar() {
+  const seed = document.getElementById('seedSelect').value;
+  const topN = document.getElementById('simN').value;
+  if (!seed) return;
+
+  loading('chartSimilarBar', true);
+  document.getElementById('similarTableBody').innerHTML =
+    '<tr><td colspan="7"><div class="loading-overlay"><div class="spinner"></div></div></td></tr>';
+
+  const data = await fetchJSON(
+    `/api/similar-places?seed=${encodeURIComponent(seed)}&top_n=${topN}`
+  );
+
+  if (!data || data.error) {
+    loading('chartSimilarBar', false, data ? data.error : 'Failed to load.');
+    return;
+  }
+
+  const results = data.results || [];
+  if (!results.length) {
+    loading('chartSimilarBar', false, 'No similar places found.');
+    return;
+  }
+
+  // Chart
+  const sorted = results.slice().sort((a, b) => a.similarity - b.similarity);
+  Plotly.react('chartSimilarBar', [{
+    y:    sorted.map(r => r.Place.length > 26 ? r.Place.slice(0,25)+'…' : r.Place),
+    x:    sorted.map(r => r.similarity),
+    type: 'bar', orientation: 'h',
+    marker: {
+      color: sorted.map(r => r.similarity),
+      colorscale: [[0,'rgba(2,132,199,.5)'],[1,'#34d399']],
+      showscale: false,
+    },
+    text: sorted.map(r => r.similarity.toFixed(3)),
+    textposition: 'outside',
+    hovertemplate: '<b>%{y}</b><br>Similarity: %{x:.4f}<extra></extra>',
+  }], {
+    ...plotlyLayout(`Places Similar to "${data.seed}"`,
+      Math.max(320, results.length * 26), { yaxis_tickfont: 9 }),
+    margin: { l: 160, r: 50, t: 50, b: 40 },
+  }, plotlyCfg());
+
+  // Table
+  const tbody = document.getElementById('similarTableBody');
+  tbody.innerHTML = results.map((r, i) => {
+    const simPct = Math.round(r.similarity * 100);
+    return `<tr>
+      <td><span class="rank-badge">${i+1}</span></td>
+      <td style="font-weight:500;">${r.Place || '—'}</td>
+      <td>
+        <div class="score-bar">
+          <div class="score-bar-bg">
+            <div class="score-bar-fill" style="width:${simPct}%;background:linear-gradient(90deg,#0284c7,#34d399);"></div>
+          </div>
+          <span class="score-val" style="color:#34d399;">${r.similarity.toFixed(3)}</span>
+        </div>
+      </td>
+      <td>⭐ ${(r.avg_rating   || 0).toFixed(2)}</td>
+      <td>${fmt(r.review_count)}</td>
+      <td class="${(r.avg_polarity||0)>0?'badge-positive':'badge-negative'}">${(r.avg_polarity||0).toFixed(3)}</td>
+      <td>${(r.hotspot_score || 0).toFixed(3)}</td>
+    </tr>`;
+  }).join('');
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Utility
+// ────────────────────────────────────────────────────────────────────────────
+function hexToRgba(hex, alpha) {
+  const r = parseInt(hex.slice(1,3),16);
+  const g = parseInt(hex.slice(3,5),16);
+  const b = parseInt(hex.slice(5,7),16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
+// Init
+cmpLoad('places');
+</script>
+{% endblock %}

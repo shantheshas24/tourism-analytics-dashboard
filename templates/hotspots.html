@@ -1,0 +1,207 @@
+{% extends "base.html" %}
+{% block title %}Hotspot Rankings{% endblock %}
+{% block page_title %}Hotspot Rankings{% endblock %}
+{% block breadcrumb %}Hotspot Analysis{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>🔥 Tourism Hotspot Rankings</h1>
+  <p>Destinations ranked by composite Hotspot Score = 0.5 × Rating + 0.3 × Volume + 0.2 × Sentiment.</p>
+</div>
+
+<div class="info-box">
+  <strong>Hotspot Score Formula:</strong>
+  HotspotScore = 0.5 × RatingScore + 0.3 × ReviewVolume + 0.2 × SentimentScore &nbsp;·&nbsp;
+  All sub-scores Min-Max normalised to [0, 1].
+</div>
+
+<!-- View Toggle -->
+<div style="margin-bottom:20px;display:flex;align-items:center;gap:12px;">
+  <span style="font-size:.85rem;color:var(--text-muted);">View by:</span>
+  <button class="theme-toggle-btn" id="viewPlaces" onclick="switchView('places')" style="opacity:1;">📍 Places</button>
+  <button class="theme-toggle-btn" id="viewCities" onclick="switchView('cities')">🏙️ Cities</button>
+  <div style="margin-left:auto;display:flex;align-items:center;gap:8px;">
+    <span style="font-size:.82rem;color:var(--text-muted);">Top N:</span>
+    <select id="topNSelect" onchange="reloadData()" style="background:var(--bg-card);border:1px solid var(--border);
+      color:var(--text-primary);border-radius:8px;padding:5px 10px;font-size:.82rem;">
+      <option value="25">25</option>
+      <option value="50" selected>50</option>
+      <option value="100">100</option>
+    </select>
+  </div>
+</div>
+
+<!-- Row: Bar Chart + Radar -->
+<div class="row-3-1">
+  <div class="chart-card">
+    <div class="chart-card-header">
+      <div class="chart-card-title"><span class="icon">📊</span> Hotspot Score Ranking</div>
+    </div>
+    <div id="chartHotspotBar" class="chart-container-lg"></div>
+  </div>
+  <div class="chart-card">
+    <div class="chart-card-header">
+      <div class="chart-card-title"><span class="icon">🕸️</span> Top 5 Score Radar</div>
+    </div>
+    <div id="chartRadar" class="chart-container-lg"></div>
+  </div>
+</div>
+
+<!-- Score Components Bar -->
+<div class="chart-card">
+  <div class="chart-card-header">
+    <div class="chart-card-title"><span class="icon">📐</span> Score Components (Top 20)</div>
+  </div>
+  <div id="chartComponents" class="chart-container"></div>
+</div>
+
+<!-- Ranking Table -->
+<div class="chart-card">
+  <div class="chart-card-header">
+    <div class="chart-card-title"><span class="icon">🏆</span> Full Ranking Table</div>
+  </div>
+  <div class="data-table-wrap">
+    <table class="data-table" id="hotspotTable">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th id="nameColHeader">Place</th>
+          <th>Hotspot Score</th>
+          <th>Avg Rating</th>
+          <th>Reviews</th>
+          <th>Sentiment</th>
+          <th>Rating Score</th>
+          <th>Volume Score</th>
+        </tr>
+      </thead>
+      <tbody id="hotspotTableBody">
+        <tr><td colspan="8"><div class="loading-overlay"><div class="spinner"></div><div class="loading-text">Loading…</div></div></td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+let _currentData = null;
+let _currentView = 'places';  // 'places' or 'cities'
+
+async function reloadData() {
+  const topN = document.getElementById('topNSelect').value;
+  const data = await fetchJSON(`/api/hotspot-data?top_n=${topN}`);
+  if (!data) return;
+  _currentData = data;
+  renderView(_currentView);
+}
+
+function switchView(view) {
+  _currentView = view;
+  document.getElementById('viewPlaces').style.opacity = view === 'places' ? '1' : '0.55';
+  document.getElementById('viewCities').style.opacity = view === 'cities' ? '1' : '0.55';
+  if (_currentData) renderView(view);
+}
+
+function renderView(view) {
+  const rows = view === 'places' ? _currentData.top_places : _currentData.top_cities;
+  const nameKey = view === 'places' ? 'Place' : 'City';
+  document.getElementById('nameColHeader').textContent = view === 'places' ? 'Place' : 'City';
+
+  if (!rows || !rows.length) return;
+
+  const cfg = plotlyCfg();
+  const layout = plotlyLayout;
+  const sorted = rows.slice().sort((a,b) => a.hotspot_score - b.hotspot_score);
+  const top20  = rows.slice(0, 20).sort((a,b) => a.hotspot_score - b.hotspot_score);
+
+  // Hotspot bar
+  Plotly.react('chartHotspotBar', [{
+    y: sorted.map(r => {
+      const n = r[nameKey]; return n.length > 28 ? n.slice(0,27)+'…' : n;
+    }),
+    x: sorted.map(r => r.hotspot_score),
+    type: 'bar', orientation: 'h',
+    marker: {
+      color: sorted.map(r => r.hotspot_score),
+      colorscale: 'Purples',
+      showscale: false,
+    },
+    text: sorted.map(r => r.hotspot_score.toFixed(3)),
+    textposition: 'outside',
+  }], layout(`Top ${rows.length} ${view === 'places' ? 'Places' : 'Cities'} by Hotspot Score`,
+      Math.max(420, rows.length * 22), { yaxis_tickfont: 9 }), cfg);
+
+  // Radar for top 5
+  const top5 = rows.slice(0, 5);
+  const radarTraces = top5.map(r => ({
+    type: 'scatterpolar',
+    r: [r.rating_score||0, r.volume_score||0, r.sentiment_score||0, r.rating_score||0],
+    theta: ['Rating Score', 'Volume Score', 'Sentiment Score', 'Rating Score'],
+    fill: 'toself', opacity: 0.7,
+    name: (r[nameKey] || '').slice(0, 20),
+  }));
+  Plotly.react('chartRadar', radarTraces, {
+    ...layout('Top 5 Score Breakdown', 480),
+    polar: {
+      bgcolor: 'rgba(255,255,255,0.03)',
+      radialaxis: { visible: true, range: [0, 1], gridcolor: 'rgba(255,255,255,0.1)', tickfont: { color: '#9090b8' } },
+      angularaxis: { gridcolor: 'rgba(255,255,255,0.1)', tickfont: { color: '#c0bce8' } },
+    },
+  }, cfg);
+
+  // Stacked components (top 20)
+  Plotly.react('chartComponents', [
+    {
+      name: 'Rating (50%)',
+      y: top20.map(r => r[nameKey].slice(0,22)),
+      x: top20.map(r => (r.rating_score||0) * 0.5),
+      type: 'bar', orientation: 'h', marker: { color: '#7c3aed' },
+    },
+    {
+      name: 'Volume (30%)',
+      y: top20.map(r => r[nameKey].slice(0,22)),
+      x: top20.map(r => (r.volume_score||0) * 0.3),
+      type: 'bar', orientation: 'h', marker: { color: '#2563eb' },
+    },
+    {
+      name: 'Sentiment (20%)',
+      y: top20.map(r => r[nameKey].slice(0,22)),
+      x: top20.map(r => (r.sentiment_score||0) * 0.2),
+      type: 'bar', orientation: 'h', marker: { color: '#059669' },
+    },
+  ], {
+    ...layout('Score Decomposition — Top 20', 440, { yaxis_tickfont: 9 }),
+    barmode: 'stack',
+  }, cfg);
+
+  // Table
+  const tbody = document.getElementById('hotspotTableBody');
+  tbody.innerHTML = rows.map((r, i) => {
+    const rankClass = i === 0 ? 'gold' : i === 1 ? 'silver' : i === 2 ? 'bronze' : '';
+    const pct = Math.round((r.hotspot_score || 0) * 100);
+    return `<tr>
+      <td><span class="rank-badge ${rankClass}">${i+1}</span></td>
+      <td style="font-weight:500;">${r[nameKey] || '—'}</td>
+      <td>
+        <div class="score-bar">
+          <div class="score-bar-bg"><div class="score-bar-fill" style="width:${pct}%"></div></div>
+          <span class="score-val">${(r.hotspot_score||0).toFixed(3)}</span>
+        </div>
+      </td>
+      <td>⭐ ${(r.avg_rating||0).toFixed(2)}</td>
+      <td>${fmt(r.review_count)}</td>
+      <td class="${(r.avg_polarity||0) > 0 ? 'badge-positive' : 'badge-negative'}">
+        ${(r.avg_polarity||0).toFixed(3)}
+      </td>
+      <td>${(r.rating_score||0).toFixed(3)}</td>
+      <td>${(r.volume_score||0).toFixed(3)}</td>
+    </tr>`;
+  }).join('');
+}
+
+// Initial load
+reloadData();
+switchView('places');
+</script>
+{% endblock %}

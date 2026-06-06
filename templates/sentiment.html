@@ -1,0 +1,186 @@
+{% extends "base.html" %}
+{% block title %}Sentiment Analysis{% endblock %}
+{% block page_title %}Sentiment Analysis{% endblock %}
+{% block breadcrumb %}Sentiment Analysis{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>💬 Sentiment Analysis</h1>
+  <p>TextBlob lexicon-based sentiment computed on 1.48M reviews. Polarity ∈ [−1, 1] · Subjectivity ∈ [0, 1].</p>
+</div>
+
+<div class="info-box">
+  <strong>Methodology:</strong> Reviews analysed using TextBlob. Polarity &gt; 0.05 → Positive · &lt; −0.05 → Negative · else Neutral.
+  Dashboard displays a representative 60K-row sample.
+</div>
+
+<!-- Row 1: Pie + Stats -->
+<div class="row-3-1">
+  <div class="chart-card">
+    <div class="chart-card-header">
+      <div class="chart-card-title"><span class="icon">🧠</span> Sentiment Distribution</div>
+    </div>
+    <div id="chartSentPie" class="chart-container"></div>
+  </div>
+  <div class="chart-card" id="sentStatsCard">
+    <div class="chart-card-header">
+      <div class="chart-card-title"><span class="icon">📋</span> Quick Stats</div>
+    </div>
+    <div id="sentStats" style="padding-top:8px;">
+      <div class="loading-overlay"><div class="spinner"></div></div>
+    </div>
+  </div>
+</div>
+
+<!-- Polarity Histogram -->
+<div class="chart-card">
+  <div class="chart-card-header">
+    <div class="chart-card-title"><span class="icon">📊</span> Polarity Score Distribution</div>
+  </div>
+  <div id="chartPolarityHist" class="chart-container"></div>
+</div>
+
+<!-- Row 2: Top Positive + Negative Cities -->
+<div class="row-2">
+  <div class="chart-card">
+    <div class="chart-card-header">
+      <div class="chart-card-title"><span class="icon">😊</span> Top 20 Most Positive Cities</div>
+    </div>
+    <div id="chartPosCity" class="chart-container"></div>
+  </div>
+  <div class="chart-card">
+    <div class="chart-card-header">
+      <div class="chart-card-title"><span class="icon">😞</span> Top 20 Most Negative Cities</div>
+    </div>
+    <div id="chartNegCity" class="chart-container"></div>
+  </div>
+</div>
+
+<!-- Top Positive Places -->
+<div class="chart-card">
+  <div class="chart-card-header">
+    <div class="chart-card-title"><span class="icon">📍</span> Top 20 Most Positive Tourist Places</div>
+  </div>
+  <div id="chartPosPlace" class="chart-container-lg"></div>
+</div>
+
+<!-- Treemap: Place popularity bubble map -->
+<div class="chart-card">
+  <div class="chart-card-header">
+    <div class="chart-card-title"><span class="icon">🗺️</span> Place Popularity Map (Treemap)</div>
+  </div>
+  <div id="chartTreemap" class="chart-container-lg"></div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+(async () => {
+  const data = await fetchJSON('/api/sentiment-data');
+  if (!data) return;
+
+  const cfg = plotlyCfg();
+  const layout = plotlyLayout;
+
+  // ── Pie Chart ─────────────────────────────────────────────────────────────
+  if (data.distribution && data.distribution.length) {
+    const dist = data.distribution;
+    const colorMap = { Positive: '#34d399', Neutral: '#60a5fa', Negative: '#f87171' };
+    Plotly.newPlot('chartSentPie', [{
+      labels: dist.map(d => d.label),
+      values: dist.map(d => d.count),
+      type: 'pie', hole: 0.55,
+      marker: { colors: dist.map(d => colorMap[d.label] || '#a78bfa') },
+      textinfo: 'percent+label',
+      textfont: { size: 13 },
+    }], layout('Sentiment Distribution', 380), cfg);
+
+    // Quick stats panel
+    const total = dist.reduce((s, d) => s + d.count, 0);
+    const statsHtml = dist.map(d => {
+      const pct = ((d.count / total) * 100).toFixed(1);
+      const emoji = d.label === 'Positive' ? '😊' : d.label === 'Negative' ? '😞' : '😐';
+      const cls   = d.label === 'Positive' ? 'badge-positive' : d.label === 'Negative' ? 'badge-negative' : 'badge-neutral';
+      return `<div style="display:flex;justify-content:space-between;align-items:center;
+                padding:12px 0;border-bottom:1px solid var(--border);">
+        <span>${emoji} <strong class="${cls}">${d.label}</strong></span>
+        <span style="color:var(--text-muted);font-size:.82rem;">${fmt(d.count)} &nbsp;·&nbsp; ${pct}%</span>
+      </div>`;
+    }).join('');
+    document.getElementById('sentStats').innerHTML =
+      `<div style="font-size:.82rem;">${statsHtml}</div>
+       <div style="margin-top:14px;font-size:.75rem;color:var(--text-muted);">
+         Based on 60K-row sample of ${fmt(1482466)} total reviews.
+       </div>`;
+  }
+
+  // ── Polarity Histogram ────────────────────────────────────────────────────
+  if (data.polarity_histogram && data.polarity_histogram.length) {
+    const ph = data.polarity_histogram;
+    Plotly.newPlot('chartPolarityHist', [{
+      x: ph.map(b => b.bin_center),
+      y: ph.map(b => b.count),
+      type: 'bar',
+      marker: {
+        color: ph.map(b => b.bin_center > 0.05 ? '#34d399' : b.bin_center < -0.05 ? '#f87171' : '#60a5fa'),
+      },
+    }], layout('Polarity Score Distribution (60K sample)', 340), cfg);
+  }
+
+  // ── Top Positive Cities ───────────────────────────────────────────────────
+  if (data.top_positive_cities && data.top_positive_cities.length) {
+    const pc = data.top_positive_cities.slice().sort((a, b) => a.avg_polarity - b.avg_polarity);
+    Plotly.newPlot('chartPosCity', [{
+      y: pc.map(c => c.City),
+      x: pc.map(c => c.avg_polarity),
+      type: 'bar', orientation: 'h',
+      marker: { color: '#34d399' },
+    }], layout('Most Positive Cities', 460, { yaxis_tickfont: 10 }), cfg);
+  }
+
+  // ── Top Negative Cities ───────────────────────────────────────────────────
+  if (data.top_negative_cities && data.top_negative_cities.length) {
+    const nc = data.top_negative_cities.slice().sort((a, b) => b.avg_polarity - a.avg_polarity);
+    Plotly.newPlot('chartNegCity', [{
+      y: nc.map(c => c.City),
+      x: nc.map(c => c.avg_polarity),
+      type: 'bar', orientation: 'h',
+      marker: { color: '#f87171' },
+    }], layout('Most Negative Cities', 460, { yaxis_tickfont: 10 }), cfg);
+  }
+
+  // ── Top Positive Places ───────────────────────────────────────────────────
+  if (data.top_positive_places && data.top_positive_places.length) {
+    const pp = data.top_positive_places.slice().sort((a, b) => a.avg_polarity - b.avg_polarity);
+    Plotly.newPlot('chartPosPlace', [{
+      y: pp.map(p => p.Place.length > 30 ? p.Place.slice(0,29)+'…' : p.Place),
+      x: pp.map(p => p.avg_polarity),
+      type: 'bar', orientation: 'h',
+      marker: { color: PALETTE_GREEN },
+      text: pp.map(p => p.avg_polarity.toFixed(3)),
+      textposition: 'outside',
+    }], layout('Top 20 Positive Places', 520, { yaxis_tickfont: 9 }), cfg);
+  }
+
+  // ── Treemap ───────────────────────────────────────────────────────────────
+  if (data.treemap_data && data.treemap_data.length) {
+    const td = data.treemap_data;
+    Plotly.newPlot('chartTreemap', [{
+      type: 'treemap',
+      labels: td.map(d => d.Place),
+      parents: td.map(() => ''),
+      values: td.map(d => d.review_count),
+      marker: {
+        colors: td.map(d => d.avg_polarity),
+        colorscale: 'Purples',
+        showscale: true,
+        colorbar: { title: 'Avg Polarity', tickfont: { color: '#c0bce8' } },
+      },
+      textfont: { size: 12, color: '#fff' },
+      hovertemplate: '<b>%{label}</b><br>Reviews: %{value:,}<br>Polarity: %{color:.3f}<extra></extra>',
+    }], layout('Top 80 Places by Review Volume (colour = polarity)', 520), cfg);
+  }
+})();
+</script>
+{% endblock %}
