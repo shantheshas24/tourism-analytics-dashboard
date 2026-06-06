@@ -7,4 +7,5 @@ venv/
 ENV/
 env/
 data/
-outputs/
+outputs/sentiment_results.csv
+outputs/rf_model.pkl
