@@ -1,0 +1,2 @@
+total_reviews,unique_cities,unique_places,unique_reviewers,avg_rating,rating_std,min_rating,max_rating,five_star_count,one_star_count
+1482478,1806,14503,11,4.2319,0.8726,1.0,5.0,692126,8821

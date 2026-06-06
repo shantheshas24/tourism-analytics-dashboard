@@ -1,0 +1,2 @@
+train_mae,test_mae,train_rmse,test_rmse,train_r2,test_r2,cv_r2_mean,cv_r2_std
+0.5954,0.6647,0.8858,0.9621,0.6966,0.6375,0.655,0.0171

@@ -1,0 +1,21 @@
+Place,RawTrendScore,TrendScore,status,source,notes
+Taj Mahal,0.0,0.0,fallback,fallback,Rate-limited after 3 retries
+Amber Fort,0.0,0.0,fallback,fallback,Rate-limited after 3 retries
+Gateway of India,0.0,0.0,fallback,fallback,Rate-limited after 3 retries
+Qutub Minar,0.0,0.0,fallback,fallback,Rate-limited after 3 retries
+Swaminarayan Akshardham,0.0,0.0,fallback,fallback,Rate-limited after 3 retries
+Wonderla Amusement Park,0.5806451612903226,0.009304,live,Google Trends,Mean interest over today 3-m (0-100 scale)
+Bandra-Worli Sea Link,0.0,0.0,live,Google Trends,Mean interest over today 3-m (0-100 scale)
+Agra Fort,4.440860215053763,0.071158,live,Google Trends,Mean interest over today 3-m (0-100 scale)
+India Gate,46.26881720430107,0.741385,live,Google Trends,Mean interest over today 3-m (0-100 scale)
+Marine Drive,21.774193548387096,0.348897,live,Google Trends,Mean interest over today 3-m (0-100 scale)
+Golden Temple,37.70967741935484,0.604238,live,Google Trends,Mean interest over today 3-m (0-100 scale)
+Humayun's Tomb,0.978494623655914,0.015679,live,Google Trends,Mean interest over today 3-m (0-100 scale)
+ISKCON Temple Bangalore,1.989247311827957,0.031875,live,Google Trends,Mean interest over today 3-m (0-100 scale)
+City Palace of Udaipur,0.053763440860215055,0.000861,live,Google Trends,Mean interest over today 3-m (0-100 scale)
+Mehrangarh Fort,1.1935483870967742,0.019125,live,Google Trends,Mean interest over today 3-m (0-100 scale)
+Hawa Mahal - Palace of Wind,0.0,0.0,live,Google Trends,Mean interest over today 3-m (0-100 scale)
+Baga Beach,62.40860215053763,1.0,live,Google Trends,Mean interest over today 3-m (0-100 scale)
+Imagica Theme Park,15.397849462365592,0.246726,live,Google Trends,Mean interest over today 3-m (0-100 scale)
+Jantar Mantar - Jaipur,10.634408602150538,0.1704,live,Google Trends,Mean interest over today 3-m (0-100 scale)
+Lalbagh Botanical Garden,6.247311827956989,0.100103,live,Google Trends,Mean interest over today 3-m (0-100 scale)

@@ -1,0 +1,10 @@
+method,sample_size,elapsed_seconds,rows_per_second,notes
+Pandas,100000,0.4191,238610.4,Median of 3 runs; groupBy City aggregation
+Pandas,500000,2.3628,211615.2,Median of 3 runs; groupBy City aggregation
+Pandas,1000000,1.9914,502149.3,Median of 3 runs; groupBy City aggregation
+Pandas,1482466,2.7099,547046.6,Median of 3 runs; groupBy City aggregation
+Spark,0,23.514,0.0,Spark session startup overhead (one-time cost in production)
+Spark,100000,2.0904,47838.1,Median of 2 runs; excludes session startup; local[*]
+Spark,500000,0.7147,699599.3,Median of 2 runs; excludes session startup; local[*]
+Spark,1000000,1.1594,862483.6,Median of 2 runs; excludes session startup; local[*]
+Spark,1482466,1.0596,1399112.1,Median of 2 runs; excludes session startup; local[*]
